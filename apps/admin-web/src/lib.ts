@@ -7,10 +7,14 @@ import { createApiClient } from '@studio/shared'
 
 /** localStorage token key，集中定義避免打錯 */
 export const TOKEN_KEY = 'studio-admin-token'
+const apiBaseUrl = import.meta.env.DEV
+  ? `${window.location.origin}/api`
+  : (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api')
 
 export const api = createApiClient({
-  baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api',
+  baseUrl: apiBaseUrl,
   getToken: () => localStorage.getItem(TOKEN_KEY),
+  apiKey: import.meta.env.VITE_API_KEY,
 })
 
 export const queryClient = new QueryClient({

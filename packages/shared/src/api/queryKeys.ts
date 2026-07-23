@@ -31,6 +31,9 @@ export const queryKeys = {
   customerAuth: {
     me: ['customer', 'auth', 'me'] as const,
   },
+  customers: {
+    all: ['customers'] as const,
+  },
   auth: {
     me: ['auth', 'me'] as const,
   },

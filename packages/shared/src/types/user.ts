@@ -4,7 +4,7 @@
  */
 import type { ID } from './common'
 
-export type AdminRole = 'owner' | 'staff'
+export type AdminRole = 'owner' | 'admin' | 'staff'
 
 export interface AdminUser {
   id: ID

@@ -1,6 +1,6 @@
-import { NavLink, Outlet } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
-  Bell,
   CalendarDays,
   ClipboardList,
   LayoutDashboard,
@@ -10,6 +10,8 @@ import {
   Warehouse,
 } from 'lucide-react'
 import { cn } from '@studio/shared'
+import { useAdminMe } from '../hooks/useAdminData'
+import { TOKEN_KEY } from '../lib'
 
 const navItems = [
   { to: '/', label: '儀表板', icon: LayoutDashboard, end: true },
@@ -21,6 +23,17 @@ const navItems = [
 ]
 
 export function AdminLayout() {
+  const qc = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const token = localStorage.getItem(TOKEN_KEY)
+  const { data: me } = useAdminMe()
+
+  if (!token) {
+    const next = encodeURIComponent(location.pathname + location.search)
+    return <Navigate to={`/login?next=${next}`} replace />
+  }
+
   return (
     <div className="min-h-dvh bg-sunken text-ink lg:flex">
       <aside className="border-b border-line bg-surface/95 lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
@@ -30,7 +43,7 @@ export function AdminLayout() {
             <span className="text-[11px] uppercase tracking-[0.2em] text-ink-3">Admin</span>
           </NavLink>
           <span className="rounded-full bg-brand-subtle px-2 py-1 text-[11px] font-medium text-brand-subtle-ink">
-            owner
+            {me?.role ?? 'admin'}
           </span>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1 lg:overflow-visible">
@@ -68,16 +81,22 @@ export function AdminLayout() {
                 placeholder="搜尋預約編號、姓名、電話或 Email"
               />
             </label>
-            <button className="inline-flex size-10 items-center justify-center rounded-lg border border-line bg-surface text-ink-2 hover:bg-sunken hover:text-ink">
-              <Bell className="size-4" />
-            </button>
-            <div className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2">
+            <button
+              type="button"
+              onClick={() => {
+                localStorage.removeItem(TOKEN_KEY)
+                qc.clear()
+                navigate('/login', { replace: true })
+              }}
+              title="Sign out"
+              className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-left hover:bg-sunken"
+            >
               <div className="size-7 rounded-full bg-brand-subtle" />
               <div className="hidden text-sm sm:block">
-                <div className="font-medium text-ink">管理者</div>
-                <div className="text-xs text-ink-3">owner@ode.studio</div>
+                <div className="font-medium text-ink">{me?.email ?? '已登入'}</div>
+                <div className="text-xs text-ink-3">Sign out</div>
               </div>
-            </div>
+            </button>
           </div>
         </header>
         <main className="px-5 py-6 md:px-8 md:py-8">
