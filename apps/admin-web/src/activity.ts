@@ -21,16 +21,20 @@ export interface RawActivityLog {
 }
 
 export async function writeActivityLog(api: ApiClient, input: ActivityLogInput) {
-  await api.post('/public/admin_activity_logs', {
-    action: input.action,
-    entity_type: input.entityType,
-    entity_id: input.entityId,
-    changes: JSON.stringify(input.changes ?? {}),
-    request_method: 'WEB',
-    request_path: window.location.pathname,
-    status: input.status ?? 'success',
-    error_message: input.errorMessage,
-    metadata: '{}',
-    created_at: new Date().toISOString(),
-  })
+  try {
+    await api.post('/public/admin_activity_logs', {
+      action: input.action,
+      entity_type: input.entityType,
+      entity_id: input.entityId,
+      changes: input.changes ?? {},
+      request_method: 'WEB',
+      request_path: window.location.pathname,
+      status: input.status ?? 'success',
+      error_message: input.errorMessage,
+      metadata: {},
+      created_at: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.warn('Failed to write activity log', error)
+  }
 }

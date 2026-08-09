@@ -8,6 +8,7 @@
  *   /schedule     檔期日曆
  *   /studios      攝影棚管理
  *   /customers    顧客列表
+ *   /discount-codes 折扣碼管理
  *   /settings     系統設定
  * *               404
  *
@@ -21,6 +22,7 @@ import { BookingListPage } from '../pages/BookingListPage'
 import { SchedulePage } from '../pages/SchedulePage'
 import { StudioManagePage } from '../pages/StudioManagePage'
 import { CustomerListPage } from '../pages/CustomerListPage'
+import { DiscountCodePage } from '../pages/DiscountCodePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 
@@ -35,6 +37,7 @@ export const router = createBrowserRouter([
       { path: 'schedule', element: <SchedulePage /> },
       { path: 'studios', element: <StudioManagePage /> },
       { path: 'customers', element: <CustomerListPage /> },
+      { path: 'discount-codes', element: <DiscountCodePage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],

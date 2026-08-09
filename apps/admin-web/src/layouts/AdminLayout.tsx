@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Search,
   Settings,
+  Tags,
   Users,
   Warehouse,
 } from 'lucide-react'
@@ -19,6 +20,7 @@ const navItems = [
   { to: '/schedule', label: '檔期日曆', icon: CalendarDays },
   { to: '/studios', label: '攝影棚管理', icon: Warehouse },
   { to: '/customers', label: '顧客', icon: Users },
+  { to: '/discount-codes', label: '折扣碼', icon: Tags },
   { to: '/settings', label: '設定', icon: Settings },
 ]
 
