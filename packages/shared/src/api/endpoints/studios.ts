@@ -83,7 +83,7 @@ export async function createStudio(api: ApiClient, input: CreateStudioInput) {
     floor: input.floor,
     area_ping: input.areaPing,
     capacity: input.capacity,
-    features: input.features ?? [],
+    features: jsonValue(input.features ?? []),
     default_hourly_price: input.defaultHourlyPrice,
     min_booking_minutes: input.minBookingMinutes ?? 120,
     max_booking_minutes: input.maxBookingMinutes ?? 480,
@@ -106,7 +106,7 @@ export async function updateStudio(api: ApiClient, studioId: ID, input: Partial<
     floor: input.floor,
     area_ping: input.areaPing,
     capacity: input.capacity,
-    features: input.features,
+    features: input.features ? jsonValue(input.features) : undefined,
     default_hourly_price: input.defaultHourlyPrice,
     min_booking_minutes: input.minBookingMinutes,
     max_booking_minutes: input.maxBookingMinutes,
@@ -154,4 +154,8 @@ function toStudioImagePayload(input: Partial<StudioImageInput>) {
     is_cover: input.isCover,
     metadata: '{}',
   }
+}
+
+function jsonValue(value: unknown): string {
+  return JSON.stringify(value)
 }

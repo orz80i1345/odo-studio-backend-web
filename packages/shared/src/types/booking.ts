@@ -23,6 +23,7 @@ export type BookingPaymentStatus =
   | 'failed'
 
 export type BookingSource = 'web' | 'phone' | 'walk_in' | 'admin'
+export type BookingMode = 'scenes' | 'buyout'
 
 export interface Booking {
   id: ID
@@ -51,6 +52,7 @@ export interface Booking {
   cancelledAt?: DateString
   cancellationReason?: string
   source: BookingSource
+  bookingMode: BookingMode
   createdAt: DateString
   updatedAt: DateString
 }
@@ -64,6 +66,7 @@ export interface CreateBookingInput {
   customerPhone: string
   customerEmail: string
   sceneIds?: ID[]
+  bookingMode?: BookingMode
   headcount?: number
   purpose?: string
   customerNote?: string

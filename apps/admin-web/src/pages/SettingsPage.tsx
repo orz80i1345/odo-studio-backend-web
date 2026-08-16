@@ -2,23 +2,12 @@ import { AtSign, Building2, Clock, CreditCard, Save, ShieldCheck } from 'lucide-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { writeActivityLog } from '../activity'
-import { useAdminStudios } from '../hooks/useAdminData'
 import { api } from '../lib'
 
 interface RawSetting {
   id: number
   setting_key: string
   setting_value: unknown
-}
-
-interface RawBusinessHour {
-  id: number
-  studio_id: number
-  weekday: number
-  start_minute: number
-  end_minute: number
-  is_closed: boolean
-  note?: string | null
 }
 
 interface RawBankAccount {
@@ -39,8 +28,6 @@ interface RawBankAccount {
 export function SettingsPage() {
   const qc = useQueryClient()
   const [message, setMessage] = useState<string | null>(null)
-  const { data: studioPage } = useAdminStudios()
-  const activeStudioId = studioPage?.items[0]?.id
   const settingsQuery = useQuery({
     queryKey: ['admin', 'system-settings'],
     queryFn: async () => {
@@ -49,18 +36,6 @@ export function SettingsPage() {
     },
   })
   const settings = settingsQuery.data ?? {}
-  const businessHoursQuery = useQuery({
-    queryKey: ['admin', 'business-hours', activeStudioId],
-    enabled: !!activeStudioId,
-    queryFn: async () => {
-      const res = await api.get<{ data: RawBusinessHour[] }>('/public/business_hours', {
-        pageSize: 100,
-        filter: `studio_id,eq,${activeStudioId}`,
-        sort: 'weekday',
-      })
-      return res.data
-    },
-  })
   const bankAccountsQuery = useQuery({
     queryKey: ['admin', 'bank-accounts'],
     queryFn: async () => {
@@ -75,7 +50,6 @@ export function SettingsPage() {
   const saveSettings = useMutation({
     mutationFn: async (input: {
       settings: Record<string, unknown>
-      businessHours: Array<Omit<RawBusinessHour, 'id'> & { id?: number }>
       bankAccount: Omit<RawBankAccount, 'id'> & { id?: number }
     }) => {
       for (const [key, value] of Object.entries(input.settings)) {
@@ -96,20 +70,6 @@ export function SettingsPage() {
         const found = existing.data[0]
         if (found) await api.patch(`/public/system_settings/${found.id}`, payload)
         else await api.post('/public/system_settings', payload)
-      }
-
-      for (const businessHour of input.businessHours) {
-        const payload = {
-          studio_id: businessHour.studio_id,
-          weekday: businessHour.weekday,
-          start_minute: businessHour.start_minute,
-          end_minute: businessHour.end_minute,
-          is_closed: businessHour.is_closed,
-          note: businessHour.note,
-          metadata: '{}',
-        }
-        if (businessHour.id) await api.patch(`/public/business_hours/${businessHour.id}`, payload)
-        else await api.post('/public/business_hours', payload)
       }
 
       const bankPayload = {
@@ -139,7 +99,6 @@ export function SettingsPage() {
     onSuccess: () => {
       setMessage('設定已儲存')
       qc.invalidateQueries({ queryKey: ['admin', 'system-settings'] })
-      qc.invalidateQueries({ queryKey: ['admin', 'business-hours'] })
       qc.invalidateQueries({ queryKey: ['admin', 'bank-accounts'] })
       qc.invalidateQueries({ queryKey: ['admin', 'activity-logs'] })
     },
@@ -149,15 +108,6 @@ export function SettingsPage() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    if (!activeStudioId) {
-      setMessage('尚無攝影棚，無法儲存營業時間')
-      return
-    }
-    const existingHours = new Map<number, RawBusinessHour>()
-    for (const item of businessHoursQuery.data ?? []) {
-      const current = existingHours.get(item.weekday)
-      if (!current || item.start_minute === 0) existingHours.set(item.weekday, item)
-    }
     saveSettings.mutate({
       settings: {
         'branding.site_name': String(form.get('siteName') ?? ''),
@@ -172,18 +122,6 @@ export function SettingsPage() {
         'admin.roles_note': String(form.get('rolesNote') ?? ''),
         'admin.note': String(form.get('adminNote') ?? ''),
       },
-      businessHours: weekdays.map((weekday) => {
-        const current = existingHours.get(weekday.value)
-        return {
-          id: current?.id,
-          studio_id: Number(activeStudioId),
-          weekday: weekday.value,
-          start_minute: timeToMinute(String(form.get(`businessStart-${weekday.value}`) || '00:00')),
-          end_minute: timeToMinute(String(form.get(`businessEnd-${weekday.value}`) || '24:00')),
-          is_closed: form.get(`businessClosed-${weekday.value}`) === 'on',
-          note: String(form.get(`businessNote-${weekday.value}`) ?? '').trim() || undefined,
-        }
-      }),
       bankAccount: {
         id: bankAccount?.id,
         account_name: String(form.get('bankAccountName') ?? '').trim(),
@@ -207,7 +145,7 @@ export function SettingsPage() {
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-ink-3">Settings</p>
           <h1 className="mt-2 font-serif text-3xl text-ink md:text-4xl">系統設定</h1>
-          <p className="mt-3 max-w-2xl text-ink-2">管理營業時間、匯款帳號、Email 通知、後台角色與系統狀態。</p>
+          <p className="mt-3 max-w-2xl text-ink-2">管理匯款帳號、Email 通知、後台角色與系統狀態。</p>
         </div>
         <button type="submit" disabled={saveSettings.isPending} className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60">
           <Save className="size-4" />
@@ -218,29 +156,6 @@ export function SettingsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <section className="space-y-4">
-          <article className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
-            <h2 className="font-serif text-xl text-ink">營業時間</h2>
-            <div className="mt-4 space-y-3">
-              {weekdays.map((weekday) => {
-                const hour = businessHoursQuery.data?.find((item) => item.weekday === weekday.value)
-                return (
-                  <div key={weekday.value} className="grid gap-3 rounded-lg bg-sunken p-3 md:grid-cols-[48px_1fr_1fr_72px] md:items-end">
-                    <span className="pb-2 text-sm font-medium text-ink">{weekday.label}</span>
-                    <SimpleField name={`businessStart-${weekday.value}`} label="開始" type="time" value={minuteToTime(hour?.start_minute ?? 0)} />
-                    <SimpleField name={`businessEnd-${weekday.value}`} label="結束" value={minuteToTime(hour?.end_minute ?? 1440)} />
-                    <label className="flex h-10 items-center gap-2 text-sm text-ink-2">
-                      <input name={`businessClosed-${weekday.value}`} type="checkbox" defaultChecked={hour?.is_closed ?? false} className="size-4 accent-brand" />
-                      公休
-                    </label>
-                    <div className="md:col-span-4">
-                      <SimpleField name={`businessNote-${weekday.value}`} label="備註" value={hour?.note ?? ''} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </article>
-
           <article className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
             <h2 className="font-serif text-xl text-ink">付款與匯款</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -310,17 +225,6 @@ function settingValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
-function timeToMinute(time: string): number {
-  if (time === '24:00') return 1440
-  const [hour = '0', minute = '0'] = time.split(':')
-  return Number(hour) * 60 + Number(minute)
-}
-
-function minuteToTime(minute: number): string {
-  if (minute >= 1440) return '24:00'
-  return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
-}
-
 function SimpleField({
   name,
   label,
@@ -346,16 +250,6 @@ function SimpleField({
     </label>
   )
 }
-
-const weekdays = [
-  { value: 0, label: '日' },
-  { value: 1, label: '一' },
-  { value: 2, label: '二' },
-  { value: 3, label: '三' },
-  { value: 4, label: '四' },
-  { value: 5, label: '五' },
-  { value: 6, label: '六' },
-]
 
 function Field({
   name,

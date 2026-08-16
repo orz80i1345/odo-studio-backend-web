@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { Spinner, type BookingPaymentStatus } from '@studio/shared'
 import { formatCurrency } from '../data/adminMock'
-import type { RawActivityLog } from '../activity'
 import { useAdminBookings, useAdminStudios } from '../hooks/useAdminData'
 import { api } from '../lib'
 
@@ -24,16 +23,6 @@ interface RawEmailLog {
 export function DashboardPage() {
   const { data: bookingPage, isLoading } = useAdminBookings()
   const { data: studioPage } = useAdminStudios()
-  const activityQuery = useQuery({
-    queryKey: ['admin', 'activity-logs'],
-    queryFn: async () => {
-      const res = await api.get<{ data: RawActivityLog[] }>('/public/admin_activity_logs', {
-        pageSize: 8,
-        sort: '-created_at',
-      })
-      return res.data
-    },
-  })
   const doorLockQuery = useQuery({
     queryKey: ['admin', 'door-lock-codes'],
     queryFn: async () => {
@@ -71,18 +60,21 @@ export function DashboardPage() {
     .filter((booking) => booking.status !== 'cancelled')
     .sort((a, b) => +new Date(a.startAt) - +new Date(b.startAt))
     .slice(0, 3)
-  const today = new Date().toISOString().slice(0, 10)
-  const tomorrowDate = new Date()
+  const now = new Date()
+  const today = localDateKey(now)
+  const tomorrowDate = new Date(now)
   tomorrowDate.setDate(tomorrowDate.getDate() + 1)
-  const tomorrow = tomorrowDate.toISOString().slice(0, 10)
-  const completedRevenue = bookings
-    .filter((booking) => booking.paymentStatus === 'paid')
+  const tomorrow = localDateKey(tomorrowDate)
+  const currentMonthKey = monthKey(now)
+  const currentMonthLabel = `${now.getFullYear()} / ${String(now.getMonth() + 1).padStart(2, '0')}`
+  const monthlyRevenue = bookings
+    .filter((booking) => booking.paymentStatus === 'paid' && monthKey(new Date(booking.startAt)) === currentMonthKey)
     .reduce((sum, booking) => sum + booking.totalPrice, 0)
   const dashboardStats = [
-    { label: '今日預約', value: String(bookings.filter((b) => b.startAt.slice(0, 10) === today).length), hint: '依預約開始時間', tone: 'brand' },
-    { label: '明日預約', value: String(bookings.filter((b) => b.startAt.slice(0, 10) === tomorrow).length), hint: '依預約開始時間', tone: 'info' },
+    { label: '今日預約', value: String(bookings.filter((b) => localDateKey(new Date(b.startAt)) === today).length), hint: '依預約開始時間', tone: 'brand' },
+    { label: '明日預約', value: String(bookings.filter((b) => localDateKey(new Date(b.startAt)) === tomorrow).length), hint: '依預約開始時間', tone: 'info' },
     { label: '待付款', value: String(pendingPayments.length), hint: '非 paid 付款狀態', tone: 'warning' },
-    { label: '已收金額', value: formatCurrency(completedRevenue), hint: '付款狀態 paid', tone: 'success' },
+    { label: '本月已收金額', value: formatCurrency(monthlyRevenue), hint: `${currentMonthLabel} · 付款狀態 paid`, tone: 'success' },
   ]
 
   return (
@@ -144,7 +136,7 @@ export function DashboardPage() {
           </div>
         </section>
 
-        <aside className="space-y-6">
+        <aside>
           <section className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
             <h2 className="font-serif text-xl text-ink">需要處理</h2>
             <div className="mt-4 space-y-3">
@@ -162,29 +154,6 @@ export function DashboardPage() {
                 tone="danger"
               />
               {(doorLockQuery.isLoading || failedEmailQuery.isLoading) && <div className="py-2 text-center text-ink-3"><Spinner /></div>}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
-            <h2 className="font-serif text-xl text-ink">操作紀錄</h2>
-            <div className="mt-4 space-y-4">
-              {activityQuery.data?.map((item) => (
-                <div key={item.id} className="flex gap-3">
-                  <div className="mt-1 size-2 rounded-full bg-brand" />
-                  <div>
-                    <p className="text-sm text-ink">
-                      <span className="font-medium">{activityActionLabel(item.action)}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-ink-3">
-                      {formatActivityTime(item.created_at)} · {item.entity_type ?? 'system'} {item.entity_id ? `#${item.entity_id}` : ''}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {activityQuery.isLoading && <div className="py-4 text-center text-ink-3"><Spinner /></div>}
-              {!activityQuery.isLoading && (activityQuery.data?.length ?? 0) === 0 && (
-                <p className="text-sm text-ink-3">目前沒有操作紀錄。</p>
-              )}
             </div>
           </section>
         </aside>
@@ -279,22 +248,10 @@ function formatBookingDateTime(startAt: string, endAt: string): string {
   return `${date} ${startTime}-${endTime}`
 }
 
-function formatActivityTime(value: string): string {
-  const date = new Date(value)
-  return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function activityActionLabel(action: string): string {
-  const labels: Record<string, string> = {
-    create_booking: '新增預約',
-    update_booking: '更新預約',
-    update_settings: '更新系統設定',
-    update_business_hours: '更新營業時間',
-    upsert_bank_account: '更新匯款帳號',
-    update_notification_settings: '更新通知設定',
-    set_24h_business_hours: '設定 24H 營業',
-    create_time_slots: '產生預約時段',
-    create_special_date: '新增特殊日期',
-  }
-  return labels[action] ?? action
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }

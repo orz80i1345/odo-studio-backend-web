@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { authApi, bookingsApi, customersApi, queryKeys, scenesApi, studiosApi } from '@studio/shared'
+import { authApi, bookingsApi, customersApi, pricingApi, queryKeys, scenesApi, studiosApi } from '@studio/shared'
 import { api, TOKEN_KEY } from '../lib'
 
 export function useAdminMe() {
@@ -35,5 +35,21 @@ export function useAdminCustomers() {
   return useQuery({
     queryKey: queryKeys.customers.all,
     queryFn: () => customersApi.listCustomers(api, { pageSize: 200 }),
+  })
+}
+
+export function useAdminScenePrices(sceneIds?: number[]) {
+  return useQuery({
+    queryKey: queryKeys.pricing.scenePrices(sceneIds),
+    queryFn: () => pricingApi.listScenePrices(api, { sceneIds, activeOnly: true }),
+    enabled: !!sceneIds && sceneIds.length > 0,
+  })
+}
+
+export function useAdminStudioPrices(studioIds?: number[]) {
+  return useQuery({
+    queryKey: queryKeys.pricing.studioPrices(studioIds),
+    queryFn: () => pricingApi.listStudioPrices(api, { studioIds, priceType: 'buyout', activeOnly: true }),
+    enabled: !!studioIds && studioIds.length > 0,
   })
 }

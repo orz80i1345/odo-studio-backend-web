@@ -1,16 +1,20 @@
 import { Image, Plus, SlidersHorizontal, Warehouse } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { ApiError, Spinner, queryKeys, scenesApi, studiosApi, type Scene, type SceneImage, type Studio, type StudioImage } from '@studio/shared'
+import { ApiError, Spinner, pricingApi, queryKeys, scenesApi, studiosApi, type Scene, type SceneImage, type Studio, type StudioImage } from '@studio/shared'
 import { writeActivityLog } from '../activity'
 import { formatCurrency } from '../data/adminMock'
-import { useAdminScenes, useAdminStudios } from '../hooks/useAdminData'
+import { useAdminScenePrices, useAdminScenes, useAdminStudioPrices, useAdminStudios } from '../hooks/useAdminData'
 import { api } from '../lib'
 
 export function StudioManagePage() {
   const qc = useQueryClient()
   const { data: studioPage, isLoading: isLoadingStudios } = useAdminStudios()
   const { data: scenePage, isLoading: isLoadingScenes } = useAdminScenes()
+  const studioIds = studioPage?.items.map((studio) => Number(studio.id)) ?? []
+  const sceneIds = scenePage?.items.map((scene) => Number(scene.id)) ?? []
+  const { data: studioPrices = [] } = useAdminStudioPrices(studioIds)
+  const { data: scenePrices = [] } = useAdminScenePrices(sceneIds)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingStudioId, setEditingStudioId] = useState<number | null>(null)
   const [editingSceneId, setEditingSceneId] = useState<number | null>(null)
@@ -20,6 +24,8 @@ export function StudioManagePage() {
   const studios = studioPage?.items ?? []
   const scenes = scenePage?.items ?? []
   const studioMap = new Map(studios.map((studio) => [studio.id, studio.name]))
+  const studioPriceMap = new Map(studioPrices.map((price) => [price.studioId, price]))
+  const scenePriceMap = new Map(scenePrices.map((price) => [price.sceneId, price]))
   const createStudio = useMutation({
     mutationFn: (input: Parameters<typeof studiosApi.createStudio>[1]) => studiosApi.createStudio(api, input),
     onSuccess: () => {
@@ -71,6 +77,15 @@ export function StudioManagePage() {
     mutationFn: async (imageId: number) => studiosApi.deleteStudioImage(api, imageId),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.studios.all }),
     onError: (error) => setCreateError(error instanceof Error ? error.message : '圖片刪除失敗'),
+  })
+  const saveStudioPrice = useMutation({
+    mutationFn: (input: { studioId: number; hourlyPrice: number; priceId?: number }) =>
+      pricingApi.saveStudioPrice(api, { ...input, priceType: 'buyout' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.pricing.studioPrices(studioIds) })
+      setCreateError(null)
+    },
+    onError: (error) => setCreateError(error instanceof Error ? error.message : '包場價格儲存失敗'),
   })
   const createScene = useMutation({
     mutationFn: (input: Parameters<typeof scenesApi.createScene>[1]) => scenesApi.createScene(api, input),
@@ -152,13 +167,22 @@ export function StudioManagePage() {
     },
     onError: (error) => setSceneMessage(error instanceof Error ? error.message : '佈景圖片刪除失敗'),
   })
+  const saveScenePrice = useMutation({
+    mutationFn: (input: { sceneId: number; hourlyPrice: number; priceId?: number }) =>
+      pricingApi.saveScenePrice(api, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.pricing.scenePrices(sceneIds) })
+      setSceneMessage('佈景價格已儲存')
+    },
+    onError: (error) => setSceneMessage(error instanceof Error ? error.message : '佈景價格儲存失敗'),
+  })
 
   async function onCreateStudio(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     try {
       setCreateError(null)
-      await createStudio.mutateAsync({
+      const studio = await createStudio.mutateAsync({
         name: text(form, 'name'),
         slug: text(form, 'slug'),
         defaultHourlyPrice: numberValue(form, 'defaultHourlyPrice'),
@@ -175,6 +199,10 @@ export function StudioManagePage() {
         cancellationHours: numberValue(form, 'cancellationHours'),
         isActive: true,
       })
+      const buyoutHourlyPrice = optionalNumber(form, 'buyoutHourlyPrice')
+      if (buyoutHourlyPrice != null) {
+        await saveStudioPrice.mutateAsync({ studioId: Number(studio.id), hourlyPrice: buyoutHourlyPrice })
+      }
       event.currentTarget.reset()
     } catch (e) {
       setCreateError(e instanceof ApiError ? e.message : '新增空間失敗')
@@ -206,6 +234,15 @@ export function StudioManagePage() {
           isActive: form.get('isActive') === 'on',
         },
       })
+      const buyoutHourlyPrice = optionalNumber(form, 'buyoutHourlyPrice')
+      if (buyoutHourlyPrice != null) {
+        const existingPrice = studioPriceMap.get(studio.id)
+        await saveStudioPrice.mutateAsync({
+          studioId: Number(studio.id),
+          hourlyPrice: buyoutHourlyPrice,
+          priceId: existingPrice ? Number(existingPrice.id) : undefined,
+        })
+      }
     } catch (e) {
       setCreateError(e instanceof ApiError ? e.message : '更新空間失敗')
     }
@@ -266,7 +303,7 @@ export function StudioManagePage() {
     const form = new FormData(event.currentTarget)
     try {
       setCreateError(null)
-      await createScene.mutateAsync({
+      const scene = await createScene.mutateAsync({
         studioId: Number(form.get('studioId')),
         name: text(form, 'name'),
         slug: text(form, 'slug'),
@@ -275,6 +312,10 @@ export function StudioManagePage() {
         displayOrder: optionalNumber(form, 'displayOrder') ?? scenes.length,
         isActive: true,
       })
+      const hourlyPrice = optionalNumber(form, 'sceneHourlyPrice')
+      if (hourlyPrice != null) {
+        await saveScenePrice.mutateAsync({ sceneId: Number(scene.id), hourlyPrice })
+      }
       await writeActivityLog(api, {
         action: 'create_scene',
         entityType: 'scene',
@@ -317,6 +358,15 @@ export function StudioManagePage() {
         isActive: form.get('isActive') === 'on',
       },
     })
+    const hourlyPrice = optionalNumber(form, 'sceneHourlyPrice')
+    if (hourlyPrice != null) {
+      const existingPrice = scenePriceMap.get(sceneId)
+      await saveScenePrice.mutateAsync({
+        sceneId,
+        hourlyPrice,
+        priceId: existingPrice ? Number(existingPrice.id) : undefined,
+      })
+    }
   }
 
   function onDeleteScene(scene: { id: number; name: string }) {
@@ -332,6 +382,10 @@ export function StudioManagePage() {
 
   async function onCreateSceneImage(event: FormEvent<HTMLFormElement>, scene: Scene) {
     event.preventDefault()
+    if (scene.images.length >= 3) {
+      setSceneMessage('最多只能新增 3 張佈景圖片')
+      return
+    }
     const form = new FormData(event.currentTarget)
     await saveSceneImage.mutateAsync({
       scene,
@@ -393,6 +447,7 @@ export function StudioManagePage() {
             <Field name="name" label="空間名稱" placeholder="北窗棚" required />
             <Field name="slug" label="網址 slug" placeholder="north-window" required />
             <Field name="defaultHourlyPrice" label="基本時租" type="number" min={0} required defaultValue="1200" />
+            <Field name="buyoutHourlyPrice" label="包場時租" type="number" min={0} defaultValue="0" />
             <Field name="areaPing" label="坪數" type="number" min={0} step="0.1" defaultValue="10" />
             <Field name="capacity" label="容納人數" type="number" min={1} defaultValue="6" />
             <Field name="floor" label="樓層" placeholder="5F" />
@@ -472,6 +527,7 @@ export function StudioManagePage() {
                 <Info label="坪數" value={`${studio.areaPing} 坪`} />
                 <Info label="容納" value={studio.capacity ? `${studio.capacity} 人` : '-'} />
                 <Info label="基本時租" value={formatCurrency(studio.defaultHourlyPrice)} />
+                <Info label="包場時租" value={formatCurrency(studioPriceMap.get(studio.id)?.hourlyPrice ?? 0)} />
                 <Info label="最短預約" value={`${studio.minBookingMinutes} 分鐘`} />
               </dl>
               {editingStudioId === studio.id && (
@@ -481,6 +537,7 @@ export function StudioManagePage() {
                     <Field name="name" label="空間名稱" defaultValue={studio.name} required />
                     <Field name="slug" label="網址 slug" defaultValue={studio.slug} required />
                     <Field name="defaultHourlyPrice" label="基本時租" type="number" min={0} defaultValue={String(studio.defaultHourlyPrice)} required />
+                    <Field name="buyoutHourlyPrice" label="包場時租" type="number" min={0} defaultValue={String(studioPriceMap.get(studio.id)?.hourlyPrice ?? '')} />
                     <Field name="areaPing" label="坪數" type="number" min={0} step="0.1" defaultValue={String(studio.areaPing)} />
                     <Field name="capacity" label="容納人數" type="number" min={1} defaultValue={String(studio.capacity ?? '')} />
                     <Field name="floor" label="樓層" defaultValue={studio.floor ?? ''} />
@@ -559,6 +616,7 @@ export function StudioManagePage() {
                 </label>
                 <Field name="name" label="佈景名稱" required />
                 <Field name="slug" label="網址 slug" required />
+                <Field name="sceneHourlyPrice" label="佈景時租" type="number" min={0} defaultValue="0" />
                 <Field name="tags" label="標籤（逗號分隔）" />
                 <Field name="displayOrder" label="排序" type="number" min={0} defaultValue={String(scenes.length)} />
                 <label>
@@ -586,6 +644,7 @@ export function StudioManagePage() {
                   <div>
                     <p className="font-medium text-ink">{scene.name}</p>
                     <p className="mt-1 text-sm text-ink-3">{studioMap.get(scene.studioId) ?? `Studio #${scene.studioId}`}</p>
+                    <p className="mt-1 text-xs text-ink-3">時租 {formatCurrency(scenePriceMap.get(scene.id)?.hourlyPrice ?? 0)}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <label className="flex items-center gap-2 text-sm text-ink-2">
@@ -627,6 +686,7 @@ export function StudioManagePage() {
                       </label>
                       <Field name="name" label="佈景名稱" defaultValue={scene.name} required form={`scene-edit-${scene.id}`} />
                       <Field name="slug" label="網址 slug" defaultValue={scene.slug} required form={`scene-edit-${scene.id}`} />
+                      <Field name="sceneHourlyPrice" label="佈景時租" type="number" min={0} defaultValue={String(scenePriceMap.get(scene.id)?.hourlyPrice ?? '')} form={`scene-edit-${scene.id}`} />
                       <Field name="displayOrder" label="排序" type="number" min={0} defaultValue={String(scene.displayOrder)} form={`scene-edit-${scene.id}`} />
                       <Field name="tags" label="標籤（逗號分隔）" defaultValue={scene.tags.join(', ')} form={`scene-edit-${scene.id}`} />
                       <label className="flex items-center gap-2 text-sm text-ink-2">
@@ -760,7 +820,7 @@ function SceneImagesEditor({
           <h3 className="text-sm font-medium text-ink">佈景圖片 URL</h3>
           <p className="mt-1 text-xs text-ink-3">前台佈景卡片與詳情頁會使用這裡的圖片。</p>
         </div>
-        <span className="text-xs text-ink-3">{scene.images.length} 張</span>
+        <span className="text-xs text-ink-3">{scene.images.length}/3 張</span>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -781,7 +841,7 @@ function SceneImagesEditor({
         <p className="mb-3 text-sm font-medium text-ink">新增圖片</p>
         <ImageUrlFields displayOrder={scene.images.length} />
         <div className="mt-3 flex justify-end">
-          <button type="submit" disabled={isSaving} className="h-9 rounded-lg bg-brand px-3 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60">
+          <button type="submit" disabled={isSaving || scene.images.length >= 3} className="h-9 rounded-lg bg-brand px-3 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60">
             {isSaving ? '儲存中...' : '新增圖片'}
           </button>
         </div>

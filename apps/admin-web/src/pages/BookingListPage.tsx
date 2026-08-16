@@ -1,4 +1,4 @@
-import { Calendar, Download, Filter, Plus, Search } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, Download, Filter, Plus, Search } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useMemo, useState, type FormEvent } from 'react'
 import { ApiError, Spinner, bookingsApi, queryKeys, type Booking, type BookingPaymentStatus, type BookingStatus } from '@studio/shared'
@@ -15,28 +15,33 @@ export function BookingListPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<BookingStatus | ''>('')
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | ''>('')
+  const [selectedMonth, setSelectedMonth] = useState(() => monthKey(new Date()))
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingBookingId, setEditingBookingId] = useState<number | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
 
   const bookings = bookingPage?.items ?? []
+  const defaultStudio = studioPage?.items[0]
   const studioMap = new Map(studioPage?.items.map((studio) => [studio.id, studio.name]))
   const sceneMap = new Map(scenePage?.items.map((scene) => [scene.id, scene.name]))
   const filteredBookings = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return bookings.filter((booking) => {
+      const matchesMonth = monthKey(new Date(booking.startAt)) === selectedMonth
       const matchesSearch = !needle || [
         booking.bookingNumber,
         booking.customerName,
         booking.customerPhone,
         booking.customerEmail,
       ].some((value) => value.toLowerCase().includes(needle))
-      return matchesSearch &&
+      return matchesMonth &&
+        matchesSearch &&
         (!status || booking.status === status) &&
         (!paymentStatus || booking.paymentStatus === paymentStatus)
     })
-  }, [bookings, paymentStatus, search, status])
+  }, [bookings, paymentStatus, search, selectedMonth, status])
+  const monthlyTotal = filteredBookings.reduce((sum, booking) => sum + booking.totalPrice, 0)
 
   const createBooking = useMutation({
     mutationFn: (input: Parameters<typeof bookingsApi.createAdminBooking>[1]) => bookingsApi.createAdminBooking(api, input),
@@ -65,8 +70,11 @@ export function BookingListPage() {
     const form = new FormData(event.currentTarget)
     try {
       setCreateError(null)
+      if (!defaultStudio) throw new Error('尚未建立攝影棚')
+      const sceneIds = form.getAll('sceneIds').map(Number).filter(Number.isFinite)
+      if (sceneIds.length === 0) throw new Error('請至少選擇一個佈景')
       const created = await createBooking.mutateAsync({
-        studioId: Number(form.get('studioId')),
+        studioId: Number(defaultStudio.id),
         startAt: new Date(String(form.get('startAt'))).toISOString(),
         endAt: new Date(String(form.get('endAt'))).toISOString(),
         customerName: String(form.get('customerName') ?? '').trim(),
@@ -74,6 +82,8 @@ export function BookingListPage() {
         customerEmail: String(form.get('customerEmail') ?? '').trim(),
         purpose: String(form.get('purpose') ?? '').trim() || undefined,
         customerNote: String(form.get('customerNote') ?? '').trim() || undefined,
+        sceneIds,
+        bookingMode: String(form.get('bookingMode') || (sceneIds.length >= 2 ? 'buyout' : 'scenes')) as Booking['bookingMode'],
         totalPrice: Number(form.get('totalPrice') ?? 0),
         status: String(form.get('status')) as BookingStatus,
         paymentStatus: String(form.get('paymentStatus')) as BookingPaymentStatus,
@@ -168,19 +178,23 @@ export function BookingListPage() {
       {isCreateOpen && (
         <form onSubmit={onCreateBooking} className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <label>
-              <span className="mb-2 block text-sm text-ink-2">攝影棚</span>
-              <select name="studioId" required className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
-                <option value="">選擇攝影棚</option>
-                {studioPage?.items.map((studio) => <option key={studio.id} value={studio.id}>{studio.name}</option>)}
-              </select>
-            </label>
+            <div className="rounded-lg border border-line bg-sunken px-3 py-2 text-sm text-ink-2">
+              <span className="block text-xs text-ink-3">攝影棚</span>
+              <span className="mt-1 block text-ink">{defaultStudio?.name ?? '尚未建立攝影棚'}</span>
+            </div>
             <Field name="customerName" label="顧客姓名" required />
             <Field name="customerPhone" label="電話" required />
             <Field name="customerEmail" label="Email" type="email" required />
             <Field name="startAt" label="開始時間" type="datetime-local" required />
             <Field name="endAt" label="結束時間" type="datetime-local" required />
             <Field name="totalPrice" label="總金額" type="number" min={0} defaultValue="0" required />
+            <label>
+              <span className="mb-2 block text-sm text-ink-2">預約方式</span>
+              <select name="bookingMode" defaultValue="scenes" className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
+                <option value="scenes">佈景</option>
+                <option value="buyout">包場</option>
+              </select>
+            </label>
             <Field name="purpose" label="用途" />
             <label>
               <span className="mb-2 block text-sm text-ink-2">預約狀態</span>
@@ -198,6 +212,17 @@ export function BookingListPage() {
               <span className="mb-2 block text-sm text-ink-2">備註</span>
               <input name="customerNote" className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none" />
             </label>
+            <fieldset className="md:col-span-2 xl:col-span-4">
+              <legend className="mb-2 text-sm text-ink-2">佈景</legend>
+              <div className="flex flex-wrap gap-2">
+                {scenePage?.items.map((scene) => (
+                  <label key={scene.id} className="inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-sunken px-3 text-sm text-ink-2">
+                    <input name="sceneIds" type="checkbox" value={scene.id} className="size-4 accent-brand" />
+                    {scene.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
           {createError && <p className="mt-4 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">{createError}</p>}
           <div className="mt-5 flex justify-end gap-3 border-t border-line pt-4">
@@ -210,12 +235,36 @@ export function BookingListPage() {
       )}
 
       <section className="rounded-lg border border-line bg-surface shadow-quiet">
-        <div className="grid gap-3 border-b border-line p-4 lg:grid-cols-[1fr_auto_auto_auto]">
+        <div className="grid gap-3 border-b border-line p-4 xl:grid-cols-[auto_1fr_auto_auto_auto]">
+          <div className="flex h-10 items-center rounded-lg border border-line bg-surface">
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(shiftMonth(selectedMonth, -1))}
+              className="flex h-full w-10 items-center justify-center text-ink-2 hover:bg-sunken hover:text-ink"
+              aria-label="上一月"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+              className="h-full border-x border-line bg-transparent px-3 text-sm text-ink outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedMonth(shiftMonth(selectedMonth, 1))}
+              className="flex h-full w-10 items-center justify-center text-ink-2 hover:bg-sunken hover:text-ink"
+              aria-label="下一月"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
           <label className="flex h-10 items-center gap-2 rounded-lg border border-line bg-sunken px-3 text-sm text-ink-3">
             <Search className="size-4" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-3" placeholder="搜尋姓名、電話、Email 或編號" />
           </label>
-          <FilterButton icon={Calendar} label={`${filteredBookings.length} 筆`} onClick={() => setSearch('')} />
+          <FilterButton icon={Calendar} label={`${filteredBookings.length} 筆 · ${formatCurrency(monthlyTotal)}`} onClick={() => setSearch('')} />
           <select value={status} onChange={(event) => setStatus(event.target.value as BookingStatus | '')} className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink-2">
             <option value="">預約狀態</option>
             {Object.entries(bookingStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -397,6 +446,16 @@ function formatBookingDateTime(startAt: string, endAt: string): string {
   const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`
   const endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`
   return `${date} ${startTime}-${endTime}`
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function shiftMonth(value: string, offset: number): string {
+  const [year, month] = value.split('-').map(Number)
+  const date = new Date(year, (month || 1) - 1 + offset, 1)
+  return monthKey(date)
 }
 
 function sceneNames(sceneIds: number[], sceneMap: Map<number, string>): string {

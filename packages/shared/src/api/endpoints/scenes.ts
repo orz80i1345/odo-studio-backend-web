@@ -73,25 +73,26 @@ export async function createScene(api: ApiClient, input: CreateSceneInput) {
     slug: input.slug,
     name: input.name,
     description: input.description,
-    tags: input.tags ?? [],
+    tags: jsonValue(input.tags ?? []),
     display_order: input.displayOrder ?? 0,
     is_active: input.isActive ?? true,
-    metadata: '{}',
+    metadata: jsonValue({}),
   })
   return toScene(unwrapItem(res))
 }
 
 export async function updateScene(api: ApiClient, sceneId: ID, input: Partial<CreateSceneInput>) {
-  const res = await api.patch<ScaffoldItemResponse<RawScene>>(`/public/scenes/${sceneId}`, {
+  const payload = omitUndefined({
     studio_id: input.studioId,
     slug: input.slug,
     name: input.name,
     description: input.description,
-    tags: input.tags,
+    tags: input.tags ? jsonValue(input.tags) : undefined,
     display_order: input.displayOrder,
     is_active: input.isActive,
-    metadata: '{}',
+    metadata: jsonValue({}),
   })
+  const res = await api.patch<ScaffoldItemResponse<RawScene>>(`/public/scenes/${sceneId}`, payload)
   return toScene(unwrapItem(res))
 }
 
@@ -120,13 +121,21 @@ export async function listSceneImages(api: ApiClient, sceneIds: ID[]): Promise<S
 }
 
 function toSceneImagePayload(input: Partial<SceneImageInput>) {
-  return {
+  return omitUndefined({
     scene_id: input.sceneId,
     url: input.url,
     alt_text: input.altText,
     caption: input.caption,
     display_order: input.displayOrder,
     is_cover: input.isCover,
-    metadata: '{}',
-  }
+    metadata: jsonValue({}),
+  })
+}
+
+function omitUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Partial<T>
+}
+
+function jsonValue(value: unknown): string {
+  return JSON.stringify(value)
 }

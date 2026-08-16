@@ -8,6 +8,7 @@
 - 主要 app：`apps/admin-web`
 - 共用套件：`packages/shared`
 - 專案說明：`project-overview/`
+- 跨前後台架構與資料規則文件：`/Users/tang/Downloads/odo-studio/docs/`
 
 ## 開發指令
 

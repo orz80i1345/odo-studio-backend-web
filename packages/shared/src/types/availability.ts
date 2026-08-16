@@ -20,6 +20,7 @@ export interface TimeSlot {
   startMinute: number
   endMinute: number
   status: TimeSlotStatus
+  bookingId?: ID | null
   hourlyPrice?: number
 }
 

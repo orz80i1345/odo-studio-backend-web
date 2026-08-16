@@ -1,11 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   CalendarDays,
   ClipboardList,
   LayoutDashboard,
-  Search,
+  Moon,
+  Package,
   Settings,
+  Sun,
   Tags,
   Users,
   Warehouse,
@@ -19,10 +22,14 @@ const navItems = [
   { to: '/bookings', label: '預約管理', icon: ClipboardList },
   { to: '/schedule', label: '檔期日曆', icon: CalendarDays },
   { to: '/studios', label: '攝影棚管理', icon: Warehouse },
+  { to: '/equipment', label: '器材管理', icon: Package },
   { to: '/customers', label: '顧客', icon: Users },
   { to: '/discount-codes', label: '折扣碼', icon: Tags },
   { to: '/settings', label: '設定', icon: Settings },
 ]
+
+const THEME_KEY = 'studio-admin-theme'
+type ThemeMode = 'light' | 'dark'
 
 export function AdminLayout() {
   const qc = useQueryClient()
@@ -30,6 +37,16 @@ export function AdminLayout() {
   const navigate = useNavigate()
   const token = localStorage.getItem(TOKEN_KEY)
   const { data: me } = useAdminMe()
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_KEY)
+    return stored === 'dark' || stored === 'light' ? stored : 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.classList.toggle('light', theme === 'light')
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
 
   if (!token) {
     const next = encodeURIComponent(location.pathname + location.search)
@@ -75,14 +92,16 @@ export function AdminLayout() {
       </aside>
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 border-b border-line bg-surface/90 backdrop-blur">
-          <div className="flex h-16 items-center gap-3 px-5 md:px-8">
-            <label className="hidden h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-sunken px-3 text-sm text-ink-3 md:flex">
-              <Search className="size-4" />
-              <input
-                className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-3"
-                placeholder="搜尋預約編號、姓名、電話或 Email"
-              />
-            </label>
+          <div className="flex h-16 items-center justify-end gap-3 px-5 md:px-8">
+            <button
+              type="button"
+              onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? '切換白色主題' : '切換黑色主題'}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm text-ink-2 hover:bg-sunken hover:text-ink"
+            >
+              {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              <span className="hidden sm:inline">{theme === 'dark' ? '白色' : '黑色'}</span>
+            </button>
             <button
               type="button"
               onClick={() => {
