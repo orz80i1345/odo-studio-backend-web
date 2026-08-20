@@ -9,7 +9,7 @@ import { createApiClient } from '@studio/shared'
 export const TOKEN_KEY = 'studio-admin-token'
 const apiBaseUrl = import.meta.env.DEV
   ? `${window.location.origin}/api`
-  : (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api')
+  : (import.meta.env.VITE_API_BASE_URL ?? 'https://cv3op1ht.cgapps.dev/api')
 
 export const api = createApiClient({
   baseUrl: apiBaseUrl,
