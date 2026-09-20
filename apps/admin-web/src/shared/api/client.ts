@@ -12,6 +12,8 @@ export interface ApiClientOptions {
   baseUrl: string
   /** 取得 auth token（後台使用）；回傳 null 表示未登入 */
   getToken?: () => string | null
+  /** token 過期或無權限時的全域處理 */
+  onUnauthorized?: () => void
   /** scaffold auth endpoints require X-API-KEY */
   apiKey?: string
 }
@@ -39,7 +41,7 @@ export interface ApiClient {
 
 /** 建立 API client 實例（每個 app 各建一個） */
 export function createApiClient(options: ApiClientOptions): ApiClient {
-  const { baseUrl, getToken, apiKey } = options
+  const { baseUrl, getToken, onUnauthorized, apiKey } = options
 
   /** 核心 request：組 URL、帶 token、統一 JSON 與錯誤處理 */
   async function request<T>(
@@ -70,6 +72,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     })
 
     if (!res.ok) {
+      if (res.status === 401 && token) onUnauthorized?.()
       // 嘗試讀後端錯誤訊息，失敗則用 statusText
       const message = await res
         .json()

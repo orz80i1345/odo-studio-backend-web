@@ -75,7 +75,7 @@ export async function getStudio(api: ApiClient, studioIdOrSlug: ID | string) {
 }
 
 export async function createStudio(api: ApiClient, input: CreateStudioInput) {
-  const res = await api.post<ScaffoldItemResponse<RawStudio>>('/public/studios', {
+  const res = await api.post<ScaffoldItemResponse<RawStudio>>('/studios', {
     slug: input.slug,
     name: input.name,
     description: input.description,
@@ -98,7 +98,7 @@ export async function createStudio(api: ApiClient, input: CreateStudioInput) {
 }
 
 export async function updateStudio(api: ApiClient, studioId: ID, input: Partial<CreateStudioInput>) {
-  const res = await api.patch<ScaffoldItemResponse<RawStudio>>(`/public/studios/${studioId}`, {
+  const res = await api.patch<ScaffoldItemResponse<RawStudio>>(`/studios/${studioId}`, {
     slug: input.slug,
     name: input.name,
     description: input.description,
@@ -121,17 +121,17 @@ export async function updateStudio(api: ApiClient, studioId: ID, input: Partial<
 }
 
 export async function createStudioImage(api: ApiClient, input: StudioImageInput) {
-  const res = await api.post<ScaffoldItemResponse<RawStudioImage>>('/public/studio_images', toStudioImagePayload(input))
+  const res = await api.post<ScaffoldItemResponse<RawStudioImage>>('/studio_images', toStudioImagePayload(input))
   return toStudioImage(unwrapItem(res))
 }
 
 export async function updateStudioImage(api: ApiClient, imageId: ID, input: Partial<StudioImageInput>) {
-  const res = await api.patch<ScaffoldItemResponse<RawStudioImage>>(`/public/studio_images/${imageId}`, toStudioImagePayload(input))
+  const res = await api.patch<ScaffoldItemResponse<RawStudioImage>>(`/studio_images/${imageId}`, toStudioImagePayload(input))
   return toStudioImage(unwrapItem(res))
 }
 
 export async function deleteStudioImage(api: ApiClient, imageId: ID) {
-  await api.delete(`/public/studio_images/${imageId}`)
+  await api.delete(`/studio_images/${imageId}`)
 }
 
 export async function listStudioImages(api: ApiClient, studioIds: ID[]): Promise<StudioImage[]> {

@@ -44,7 +44,7 @@ export function DiscountCodePage() {
   }, [codes, search])
 
   const createCode = useMutation({
-    mutationFn: (input: Omit<RawDiscountCode, 'id'>) => api.post<{ data: RawDiscountCode }>('/public/discount_codes', input),
+    mutationFn: (input: Omit<RawDiscountCode, 'id'>) => api.post<{ data: RawDiscountCode }>('/discount_codes', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey })
       setIsCreateOpen(false)
@@ -53,7 +53,7 @@ export function DiscountCodePage() {
 
   const updateCode = useMutation({
     mutationFn: ({ id, input }: { id: number; input: Omit<RawDiscountCode, 'id'> }) =>
-      api.patch<{ data: RawDiscountCode }>(`/public/discount_codes/${id}`, input),
+      api.patch<{ data: RawDiscountCode }>(`/discount_codes/${id}`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey })
       setEditingId(null)
@@ -61,7 +61,7 @@ export function DiscountCodePage() {
   })
 
   const deleteCode = useMutation({
-    mutationFn: (id: number) => api.delete(`/public/discount_codes/${id}`),
+    mutationFn: (id: number) => api.delete(`/discount_codes/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   })
 

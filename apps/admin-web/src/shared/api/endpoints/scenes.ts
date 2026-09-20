@@ -68,7 +68,7 @@ export async function getScene(api: ApiClient, sceneIdOrSlug: ID | string) {
 }
 
 export async function createScene(api: ApiClient, input: CreateSceneInput) {
-  const res = await api.post<ScaffoldItemResponse<RawScene>>('/public/scenes', {
+  const res = await api.post<ScaffoldItemResponse<RawScene>>('/scenes', {
     studio_id: input.studioId,
     slug: input.slug,
     name: input.name,
@@ -92,22 +92,22 @@ export async function updateScene(api: ApiClient, sceneId: ID, input: Partial<Cr
     is_active: input.isActive,
     metadata: jsonValue({}),
   })
-  const res = await api.patch<ScaffoldItemResponse<RawScene>>(`/public/scenes/${sceneId}`, payload)
+  const res = await api.patch<ScaffoldItemResponse<RawScene>>(`/scenes/${sceneId}`, payload)
   return toScene(unwrapItem(res))
 }
 
 export async function createSceneImage(api: ApiClient, input: SceneImageInput) {
-  const res = await api.post<ScaffoldItemResponse<RawSceneImage>>('/public/scene_images', toSceneImagePayload(input))
+  const res = await api.post<ScaffoldItemResponse<RawSceneImage>>('/scene_images', toSceneImagePayload(input))
   return toSceneImage(unwrapItem(res))
 }
 
 export async function updateSceneImage(api: ApiClient, imageId: ID, input: Partial<SceneImageInput>) {
-  const res = await api.patch<ScaffoldItemResponse<RawSceneImage>>(`/public/scene_images/${imageId}`, toSceneImagePayload(input))
+  const res = await api.patch<ScaffoldItemResponse<RawSceneImage>>(`/scene_images/${imageId}`, toSceneImagePayload(input))
   return toSceneImage(unwrapItem(res))
 }
 
 export async function deleteSceneImage(api: ApiClient, imageId: ID) {
-  await api.delete(`/public/scene_images/${imageId}`)
+  await api.delete(`/scene_images/${imageId}`)
 }
 
 export async function listSceneImages(api: ApiClient, sceneIds: ID[]): Promise<SceneImage[]> {

@@ -29,7 +29,7 @@ export function EquipmentPage() {
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
-      const res = await api.get<{ data: RawEquipmentItem[] }>('/public/equipment_items', {
+      const res = await api.get<{ data: RawEquipmentItem[] }>('/equipment_items', {
         pageSize: 100,
         sort: 'display_order_asc',
       })
@@ -45,7 +45,7 @@ export function EquipmentPage() {
   }, [items, search])
 
   const createItem = useMutation({
-    mutationFn: (input: Omit<RawEquipmentItem, 'id'>) => api.post<{ data: RawEquipmentItem }>('/public/equipment_items', input),
+    mutationFn: (input: Omit<RawEquipmentItem, 'id'>) => api.post<{ data: RawEquipmentItem }>('/equipment_items', input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey })
       setIsCreateOpen(false)
@@ -54,7 +54,7 @@ export function EquipmentPage() {
 
   const updateItem = useMutation({
     mutationFn: ({ id, input }: { id: number; input: Omit<RawEquipmentItem, 'id'> }) =>
-      api.patch<{ data: RawEquipmentItem }>(`/public/equipment_items/${id}`, input),
+      api.patch<{ data: RawEquipmentItem }>(`/equipment_items/${id}`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey })
       setEditingId(null)
@@ -62,7 +62,7 @@ export function EquipmentPage() {
   })
 
   const deleteItem = useMutation({
-    mutationFn: (id: number) => api.delete(`/public/equipment_items/${id}`),
+    mutationFn: (id: number) => api.delete(`/equipment_items/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   })
 

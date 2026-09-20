@@ -22,7 +22,7 @@ export interface RawActivityLog {
 
 export async function writeActivityLog(api: ApiClient, input: ActivityLogInput) {
   try {
-    await api.post('/public/admin_activity_logs', {
+    await api.post('/admin_activity_logs', {
       action: input.action,
       entity_type: input.entityType,
       entity_id: input.entityId,

@@ -14,6 +14,13 @@ const apiBaseUrl = import.meta.env.DEV
 export const api = createApiClient({
   baseUrl: apiBaseUrl,
   getToken: () => localStorage.getItem(TOKEN_KEY),
+  onUnauthorized: () => {
+    localStorage.removeItem(TOKEN_KEY)
+    if (!window.location.pathname.startsWith('/login')) {
+      const next = encodeURIComponent(window.location.pathname + window.location.search)
+      window.location.assign(`/login?next=${next}`)
+    }
+  },
   apiKey: import.meta.env.VITE_API_KEY,
 })
 

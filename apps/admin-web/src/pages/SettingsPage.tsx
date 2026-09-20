@@ -68,8 +68,8 @@ export function SettingsPage() {
           validation_rules: '{}',
         }
         const found = existing.data[0]
-        if (found) await api.patch(`/public/system_settings/${found.id}`, payload)
-        else await api.post('/public/system_settings', payload)
+        if (found) await api.patch(`/system_settings/${found.id}`, payload)
+        else await api.post('/system_settings', payload)
       }
 
       const bankPayload = {
@@ -87,8 +87,8 @@ export function SettingsPage() {
         note: input.bankAccount.note,
         metadata: '{}',
       }
-      if (input.bankAccount.id) await api.patch(`/public/bank_accounts/${input.bankAccount.id}`, bankPayload)
-      else await api.post('/public/bank_accounts', bankPayload)
+      if (input.bankAccount.id) await api.patch(`/bank_accounts/${input.bankAccount.id}`, bankPayload)
+      else await api.post('/bank_accounts', bankPayload)
 
       await writeActivityLog(api, {
         action: 'update_settings',

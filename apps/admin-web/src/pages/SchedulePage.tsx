@@ -99,7 +99,7 @@ export function SchedulePage() {
   }, [specialDates.data])
   const createSpecialDate = useMutation({
     mutationFn: async (body: CreateSpecialDateInput) => {
-      const res = await api.post<RawSpecialDate | { data: RawSpecialDate }>('/public/special_dates', body)
+      const res = await api.post<RawSpecialDate | { data: RawSpecialDate }>('/special_dates', body)
       const created = unwrapData(res)
       const patchedSlots = await blockAvailableSlotsForSpecialDate(body)
       return { created, patchedSlots }
@@ -150,8 +150,8 @@ export function SchedulePage() {
           note: '24H',
           metadata: '{}',
         }
-        if (current) await api.patch(`/public/business_hours/${current.id}`, payload)
-        else await api.post('/public/business_hours', payload)
+        if (current) await api.patch(`/business_hours/${current.id}`, payload)
+        else await api.post('/business_hours', payload)
       }
     },
     onSuccess: () => {
@@ -206,7 +206,7 @@ export function SchedulePage() {
       }
       let createdSlots: RawTimeSlot[] = []
       if (payload.length > 0) {
-        const res = await api.post<RawTimeSlot[] | { data: RawTimeSlot[] } | undefined>('/public/time_slots/batch', payload)
+        const res = await api.post<RawTimeSlot[] | { data: RawTimeSlot[] } | undefined>('/time_slots/batch', payload)
         const body = res ? unwrapData(res) : undefined
         createdSlots = Array.isArray(body) && body.length > 0
           ? body
@@ -247,7 +247,7 @@ export function SchedulePage() {
           'status,eq,available',
         ],
       })
-      await Promise.all(res.data.map((slot) => api.patch(`/public/time_slots/${slot.id}`, {
+      await Promise.all(res.data.map((slot) => api.patch(`/time_slots/${slot.id}`, {
         hourly_price: input.hourlyPrice,
         metadata: '{}',
       })))
@@ -270,7 +270,7 @@ export function SchedulePage() {
     mutationFn: async () => {
       const slots = daySlots.data ?? []
       for (const slot of slots) {
-        await api.delete(`/public/time_slots/${slot.id}`)
+        await api.delete(`/time_slots/${slot.id}`)
       }
       await writeActivityLog(api, {
         action: 'reset_time_slots',
@@ -734,7 +734,7 @@ async function blockAvailableSlotsForSpecialDate(input: CreateSpecialDateInput) 
       block_reason: reason,
       metadata: '{}',
     }
-    const res = await api.patch<RawTimeSlot | { data: RawTimeSlot } | undefined>(`/public/time_slots/${slot.id}`, payload)
+    const res = await api.patch<RawTimeSlot | { data: RawTimeSlot } | undefined>(`/time_slots/${slot.id}`, payload)
     return res ? unwrapData(res) : { ...slot, ...payload }
   }))
   return patched
@@ -751,8 +751,8 @@ async function syncDailyAvailability(studioId: number, date: string) {
     ],
   })
   const current = existing.data[0]
-  if (current) await api.patch(`/public/studio_daily_availability/${current.id}`, summary)
-  else await api.post('/public/studio_daily_availability', summary)
+  if (current) await api.patch(`/studio_daily_availability/${current.id}`, summary)
+  else await api.post('/studio_daily_availability', summary)
 }
 
 function buildDailyAvailabilityPayload(studioId: number, date: string, slots: RawTimeSlot[]) {

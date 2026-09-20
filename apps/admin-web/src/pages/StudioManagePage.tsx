@@ -1,7 +1,7 @@
 import { Image, Plus, SlidersHorizontal, Warehouse } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
-import { ApiError, Spinner, pricingApi, queryKeys, scenesApi, studiosApi, type Scene, type SceneImage, type Studio, type StudioImage } from '@studio/shared'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { ApiError, Spinner, pricingApi, queryKeys, scenesApi, studiosApi, type Scene, type SceneImage, type ScenePrice, type Studio, type StudioImage } from '@studio/shared'
 import { writeActivityLog } from '../activity'
 import { formatCurrency } from '../data/adminMock'
 import { useAdminScenePrices, useAdminScenes, useAdminStudioPrices, useAdminStudios } from '../hooks/useAdminData'
@@ -44,7 +44,7 @@ export function StudioManagePage() {
   })
   const deleteStudio = useMutation({
     mutationFn: async (studio: { id: number; name: string }) => {
-      await api.delete(`/public/studios/${studio.id}`)
+      await api.delete(`/studios/${studio.id}`)
       await writeActivityLog(api, {
         action: 'delete_studio',
         entityType: 'studio',
@@ -132,7 +132,7 @@ export function StudioManagePage() {
   })
   const deleteScene = useMutation({
     mutationFn: async (scene: { id: number; name: string }) => {
-      await api.delete(`/public/scenes/${scene.id}`)
+      await api.delete(`/scenes/${scene.id}`)
       await writeActivityLog(api, {
         action: 'delete_scene',
         entityType: 'scene',
@@ -170,8 +170,12 @@ export function StudioManagePage() {
   const saveScenePrice = useMutation({
     mutationFn: (input: { sceneId: number; hourlyPrice: number; priceId?: number }) =>
       pricingApi.saveScenePrice(api, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.pricing.scenePrices(sceneIds) })
+    onSuccess: (savedPrice) => {
+      qc.setQueryData<ScenePrice[]>(queryKeys.pricing.scenePrices(sceneIds), (current) => {
+        if (!current) return [savedPrice]
+        return [savedPrice, ...current.filter((price) => Number(price.sceneId) !== Number(savedPrice.sceneId))]
+      })
+      qc.invalidateQueries({ queryKey: ['scene-prices'] })
       setSceneMessage('佈景價格已儲存')
     },
     onError: (error) => setSceneMessage(error instanceof Error ? error.message : '佈景價格儲存失敗'),
@@ -639,7 +643,7 @@ export function StudioManagePage() {
               <div className="p-10 text-center text-sm text-ink-3">目前沒有佈景資料。</div>
             )}
             {scenes.map((scene) => (
-              <div key={scene.name} className="p-5">
+              <div key={scene.id} className="p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-medium text-ink">{scene.name}</p>
@@ -888,11 +892,48 @@ function ImageUrlFields({
   image?: StudioImage | SceneImage
   displayOrder: number
 }) {
+  const [url, setUrl] = useState(image?.url ?? '')
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  async function onUploadImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setUploadMessage('請選擇圖片檔案')
+      return
+    }
+
+    try {
+      setIsUploading(true)
+      setUploadMessage('上傳中...')
+      const uploadedUrl = await uploadImage(file)
+      setUrl(uploadedUrl)
+      setUploadMessage('圖片已上傳，URL 已填入')
+    } catch (error) {
+      setUploadMessage(error instanceof Error ? error.message : '圖片上傳失敗')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   return (
     <div className="grid gap-3 md:grid-cols-[1fr_120px]">
       <label className="md:col-span-2">
+        <span className="mb-2 block text-sm text-ink-2">上傳圖片</span>
+        <input
+          type="file"
+          accept="image/*"
+          disabled={isUploading}
+          onChange={onUploadImage}
+          className="block w-full rounded-lg border border-line bg-sunken px-3 py-2 text-sm text-ink file:mr-3 file:rounded-md file:border-0 file:bg-brand file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-on disabled:opacity-60"
+        />
+        {uploadMessage && <span className="mt-2 block text-xs text-ink-3">{uploadMessage}</span>}
+      </label>
+      <label className="md:col-span-2">
         <span className="mb-2 block text-sm text-ink-2">圖片 URL</span>
-        <input name="url" type="url" required defaultValue={image?.url ?? ''} placeholder="https://..." className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none focus:border-brand" />
+        <input name="url" type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none focus:border-brand" />
       </label>
       <label>
         <span className="mb-2 block text-sm text-ink-2">替代文字</span>
@@ -912,6 +953,77 @@ function ImageUrlFields({
       </label>
     </div>
   )
+}
+
+async function uploadImage(file: File) {
+  const contentType = file.type || 'application/octet-stream'
+  const presigned = await api.post<unknown>('/presignedurl', {
+    file_name: file.name,
+    file_type: contentType,
+  })
+  const details = normalizePresignedUrlResponse(presigned)
+
+  if (details.fields && Object.keys(details.fields).length > 0) {
+    const form = new FormData()
+    for (const [key, value] of Object.entries(details.fields)) form.append(key, String(value))
+    form.append('file', file)
+    const res = await fetch(details.uploadUrl, { method: 'POST', body: form })
+    if (!res.ok) throw new Error('圖片上傳失敗')
+  } else {
+    const res = await fetch(details.uploadUrl, {
+      method: details.method ?? 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: file,
+    })
+    if (!res.ok) throw new Error('圖片上傳失敗')
+  }
+
+  return details.publicUrl
+}
+
+function normalizePresignedUrlResponse(response: unknown) {
+  const source = firstRecord(response, ['data', 'result', 'payload']) ?? asRecord(response)
+  const uploadUrl = pickString(source, ['upload_url', 'uploadUrl', 'presigned_url', 'presignedUrl', 'signed_url', 'signedUrl', 'url'])
+  if (!uploadUrl) throw new Error('presigned URL 回傳格式缺少 upload url')
+
+  const publicUrl = pickString(source, ['public_url', 'publicUrl', 'file_url', 'fileUrl', 'object_url', 'objectUrl', 'download_url', 'downloadUrl'])
+    ?? stripQuery(uploadUrl)
+  const method = pickString(source, ['method', 'http_method', 'httpMethod'])?.toUpperCase()
+  const fields = asRecord(source.fields)
+
+  return { uploadUrl, publicUrl, method, fields }
+}
+
+function firstRecord(value: unknown, keys: string[]) {
+  let current = asRecord(value)
+  for (const key of keys) {
+    const nested = asRecord(current[key])
+    if (nested) return nested
+  }
+  return null
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function pickString(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
+}
+
+function stripQuery(url: string) {
+  try {
+    const parsed = new URL(url)
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString()
+  } catch {
+    return url
+  }
 }
 
 function ImagePreview({ url, alt }: { url: string; alt?: string }) {

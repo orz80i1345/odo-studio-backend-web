@@ -25,7 +25,7 @@ export async function createBooking(api: ApiClient, input: CreateBookingInput) {
     throw new Error('此時段已被預約或暫時不可預約，請重新選擇時段。')
   }
   const totals = calculateBookingTotals(slots)
-  const res = await api.post<ScaffoldItemResponse<RawBooking>>('/public/bookings', toBookingCreate(input, totals))
+  const res = await api.post<ScaffoldItemResponse<RawBooking>>('/bookings', toBookingCreate(input, totals))
   const booking = toBooking(unwrapItem(res))
   await createBookingSceneTimeSlots(api, booking, input.sceneIds ?? [], slots.map((slot) => slot.id))
   if (booking.bookingMode === 'buyout') await syncBookingTimeSlots(api, booking)
@@ -41,7 +41,7 @@ export async function listMyBookings(
   const filters: string[] = []
   if (params?.status) filters.push(filter('status', 'eq', params.status))
   if (params?.customerEmail) filters.push(filter('customer_email', 'eq', params.customerEmail))
-  const res = await api.get<ScaffoldListResponse<RawBooking>>('/public/bookings', {
+  const res = await api.get<ScaffoldListResponse<RawBooking>>('/bookings', {
     page: params?.page,
     pageSize: params?.pageSize ?? 50,
     filter: filters,
@@ -52,13 +52,13 @@ export async function listMyBookings(
 
 /** 單一預約詳細 */
 export async function getBooking(api: ApiClient, bookingId: ID) {
-  const res = await api.get<ScaffoldItemResponse<RawBooking>>(`/public/bookings/${bookingId}`)
+  const res = await api.get<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`)
   return toBooking(unwrapItem(res))
 }
 
 /** 取消預約（前台會員） */
 export async function cancelBooking(api: ApiClient, bookingId: ID, reason?: string) {
-  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/public/bookings/${bookingId}`, {
+  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
     status: 'cancelled',
     cancellation_reason: reason,
     cancelled_at: new Date().toISOString(),
@@ -80,7 +80,7 @@ export async function updateBooking(
     cancellationReason: string
   }>,
 ) {
-  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/public/bookings/${bookingId}`, {
+  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
     status: input.status,
     payment_status: input.paymentStatus,
     customer_note: input.customerNote,
@@ -105,7 +105,7 @@ export async function createAdminBooking(
   const end = new Date(input.endAt)
   const totalHours = Math.round(((+end - +start) / 3_600_000) * 100) / 100
   const totalPrice = Math.round(input.totalPrice)
-  const res = await api.post<ScaffoldItemResponse<RawBooking>>('/public/bookings', {
+  const res = await api.post<ScaffoldItemResponse<RawBooking>>('/bookings', {
     booking_number: buildBookingNumber(),
     studio_id: input.studioId,
     customer_name: input.customerName,
@@ -179,7 +179,7 @@ async function syncBookingTimeSlots(api: ApiClient, booking: Booking) {
     ? exactBookingSlots
     : overlappingSlots
   await Promise.all(targetSlots
-    .map((slot) => api.patch(`/public/time_slots/${slot.id}`, {
+    .map((slot) => api.patch(`/time_slots/${slot.id}`, {
       status: nextStatus,
       booking_id: nextStatus === 'booked' ? booking.id : null,
       metadata: '{}',
@@ -209,15 +209,15 @@ async function createBookingSceneTimeSlots(api: ApiClient, booking: Booking, sce
       time_slot_id: timeSlotId,
       status: 'active',
     })))
-  await api.post('/public/booking_scene_time_slots/batch', payload)
+  await api.post('/booking_scene_time_slots/batch', payload)
 }
 
 async function deleteBookingSceneTimeSlots(api: ApiClient, bookingId: ID) {
-  const existing = await api.get<ScaffoldListResponse<RawBookingSceneTimeSlot>>('/public/booking_scene_time_slots', {
+  const existing = await api.get<ScaffoldListResponse<RawBookingSceneTimeSlot>>('/booking_scene_time_slots', {
     pageSize: 100,
     filter: filter('booking_id', 'eq', bookingId),
   })
-  await Promise.all(toScaffoldList(existing, (item) => item).items.map((item) => api.delete(`/public/booking_scene_time_slots/${item.id}`)))
+  await Promise.all(toScaffoldList(existing, (item) => item).items.map((item) => api.delete(`/booking_scene_time_slots/${item.id}`)))
 }
 
 async function syncDailyAvailability(api: ApiClient, studioId: ID, date: string) {
@@ -268,8 +268,8 @@ async function syncDailyAvailability(api: ApiClient, studioId: ID, date: string)
     ],
   })
   const item = toScaffoldList(existing, (value) => value).items[0]
-  if (item) await api.patch(`/public/studio_daily_availability/${item.id}`, payload)
-  else await api.post('/public/studio_daily_availability', payload)
+  if (item) await api.patch(`/studio_daily_availability/${item.id}`, payload)
+  else await api.post('/studio_daily_availability', payload)
 }
 
 function localDateFromIso(value: string): string {
