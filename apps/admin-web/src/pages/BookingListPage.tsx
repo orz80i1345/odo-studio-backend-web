@@ -1,5 +1,5 @@
 import { Calendar, ChevronLeft, ChevronRight, Download, Filter, Plus, Search } from 'lucide-react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useMemo, useState, type FormEvent } from 'react'
 import { ApiError, Spinner, bookingsApi, queryKeys, type Booking, type BookingPaymentStatus, type BookingStatus } from '@studio/shared'
 import { writeActivityLog } from '../activity'
@@ -7,19 +7,48 @@ import { formatCurrency } from '../data/adminMock'
 import { useAdminBookings, useAdminScenes, useAdminStudios } from '../hooks/useAdminData'
 import { api } from '../lib'
 
+interface RawPayment {
+  id: number
+  booking_id: number
+  payment_number: string
+  payment_type: 'deposit' | 'full' | 'balance'
+  amount: number | string
+  currency?: string
+  status: 'pending' | 'paid' | 'failed' | 'cancelled' | 'refunded'
+  payer_name?: string
+  payer_las4?: string
+  payer_last4?: string
+  transferred_at?: string
+  verified_at?: string
+}
+
+const paymentsQueryKey = ['admin', 'payments'] as const
+
 export function BookingListPage() {
   const qc = useQueryClient()
   const { data: bookingPage, isLoading } = useAdminBookings()
   const { data: studioPage } = useAdminStudios()
   const { data: scenePage } = useAdminScenes()
+  const { data: payments = [], error: paymentsError } = useQuery({
+    queryKey: paymentsQueryKey,
+    queryFn: async () => {
+      const res = await api.get<{ data: RawPayment[] }>('/public/payments', {
+        pageSize: 100,
+        sort: '-created_at',
+      })
+      return res.data ?? []
+    },
+  })
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<BookingStatus | ''>('')
   const [paymentStatus, setPaymentStatus] = useState<BookingPaymentStatus | ''>('')
   const [selectedMonth, setSelectedMonth] = useState(() => monthKey(new Date()))
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [expandedBookingId, setExpandedBookingId] = useState<number | null>(null)
   const [editingBookingId, setEditingBookingId] = useState<number | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
 
   const bookings = bookingPage?.items ?? []
   const defaultStudio = studioPage?.items[0]
@@ -62,6 +91,25 @@ export function BookingListPage() {
       qc.invalidateQueries({ queryKey: ['admin', 'time-slots'] })
       setEditError(null)
       setEditingBookingId(null)
+    },
+  })
+  const confirmPayment = useMutation({
+    mutationFn: async ({ booking, payment }: { booking: Booking; payment: RawPayment }) => {
+      const verifiedAt = new Date().toISOString()
+      await api.patch(`/payments/${payment.id}`, {
+        status: 'paid',
+        verified_at: verifiedAt,
+      })
+      const updatedBooking = await bookingsApi.updateBooking(api, Number(booking.id), {
+        status: 'confirmed',
+        paymentStatus: payment.payment_type === 'deposit' ? 'deposit_paid' : 'paid',
+      })
+      return { booking: updatedBooking, payment, verifiedAt }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.bookings.all })
+      qc.invalidateQueries({ queryKey: paymentsQueryKey })
+      setPaymentError(null)
     },
   })
 
@@ -125,6 +173,26 @@ export function BookingListPage() {
     }
   }
 
+  async function onConfirmPayment(booking: Booking, payment: RawPayment) {
+    try {
+      setPaymentError(null)
+      const result = await confirmPayment.mutateAsync({ booking, payment })
+      await writeActivityLog(api, {
+        action: 'confirm_payment',
+        entityType: 'payment',
+        entityId: payment.id,
+        changes: {
+          bookingId: booking.id,
+          amount: Number(payment.amount),
+          paymentStatus: result.booking.paymentStatus,
+          verifiedAt: result.verifiedAt,
+        },
+      })
+    } catch (e) {
+      setPaymentError(e instanceof Error ? e.message : '確認入帳失敗')
+    }
+  }
+
   function exportCsv() {
     const header = ['booking_number', 'customer_name', 'customer_phone', 'customer_email', 'start_at', 'end_at', 'total_price', 'status', 'payment_status']
     const rows = filteredBookings.map((booking) => [
@@ -174,6 +242,12 @@ export function BookingListPage() {
           </button>
         </div>
       </div>
+
+      {paymentsError && (
+        <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">
+          {paymentsError instanceof Error ? paymentsError.message : '匯款資訊讀取失敗'}
+        </p>
+      )}
 
       {isCreateOpen && (
         <form onSubmit={onCreateBooking} className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
@@ -302,10 +376,28 @@ export function BookingListPage() {
               )}
               {filteredBookings.map((booking) => (
                 <Fragment key={booking.id}>
-                <tr className="align-top hover:bg-sunken/70">
+                <tr
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expandedBookingId === booking.id}
+                  onClick={() => {
+                    setExpandedBookingId((value) => value === booking.id ? null : Number(booking.id))
+                    setPaymentError(null)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+                    event.preventDefault()
+                    setExpandedBookingId((value) => value === booking.id ? null : Number(booking.id))
+                    setPaymentError(null)
+                  }}
+                  className="cursor-pointer align-top transition-colors hover:bg-sunken/70 focus-visible:bg-sunken/70 focus-visible:outline-none"
+                >
                   <td className="px-4 py-4">
                     <div className="font-medium text-ink">{booking.bookingNumber}</div>
                     <div className="mt-1 text-xs text-ink-3">{sourceLabels[booking.source]}</div>
+                    <div className="mt-1 text-[11px] text-brand">
+                      {expandedBookingId === booking.id ? '收合匯款資訊 ↑' : '查看匯款資訊 ↓'}
+                    </div>
                   </td>
                   <td className="px-4 py-4">
                     <div className="font-medium text-ink">{booking.customerName}</div>
@@ -329,13 +421,28 @@ export function BookingListPage() {
                   <td className="px-4 py-4">
                     <button
                       type="button"
-                      onClick={() => setEditingBookingId((value) => value === booking.id ? null : Number(booking.id))}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setEditingBookingId((value) => value === booking.id ? null : Number(booking.id))
+                      }}
                       className="h-9 rounded-lg border border-line px-3 text-xs text-ink-2 hover:bg-sunken hover:text-ink"
                     >
                       編輯
                     </button>
                   </td>
                 </tr>
+                {expandedBookingId === booking.id && (
+                  <tr key={`${booking.id}-payment`}>
+                    <td colSpan={8} className="bg-sunken px-4 py-4">
+                      <PaymentConfirmationPanel
+                        payments={payments.filter((payment) => payment.booking_id === Number(booking.id))}
+                        paymentError={paymentError}
+                        confirmingPaymentId={confirmPayment.isPending ? confirmPayment.variables?.payment.id : undefined}
+                        onConfirm={(payment) => onConfirmPayment(booking, payment)}
+                      />
+                    </td>
+                  </tr>
+                )}
                 {editingBookingId === booking.id && (
                   <tr key={`${booking.id}-edit`}>
                     <td colSpan={8} className="bg-sunken px-4 py-4">
@@ -373,6 +480,103 @@ export function BookingListPage() {
       </section>
     </section>
   )
+}
+
+function PaymentConfirmationPanel({
+  payments,
+  paymentError,
+  confirmingPaymentId,
+  onConfirm,
+}: {
+  payments: RawPayment[]
+  paymentError: string | null
+  confirmingPaymentId?: number
+  onConfirm: (payment: RawPayment) => void
+}) {
+  if (payments.length === 0) {
+    return (
+      <div className="rounded-lg border border-line bg-surface px-5 py-6 text-sm text-ink-3">
+        此訂單尚未回報匯款資訊。
+      </div>
+    )
+  }
+
+  return (
+    <div className="payment-expand space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-ink-3">Payment confirmation</p>
+          <h3 className="mt-1 font-serif text-xl text-ink">匯款資訊確認</h3>
+        </div>
+        <p className="text-xs text-ink-3">請核對末四碼、金額與匯款時間</p>
+      </div>
+
+      {payments.map((payment) => {
+        const canConfirm = payment.status === 'pending' || payment.status === 'failed'
+        const isConfirming = confirmingPaymentId === payment.id
+        return (
+          <div key={payment.id} className="grid gap-4 rounded-lg border border-line bg-surface p-5 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto] lg:items-center">
+            <PaymentInfo label="帳號末四碼" value={payment.payer_las4 ?? payment.payer_last4 ?? '尚未提供'} />
+            <PaymentInfo label="匯款金額" value={formatCurrency(Number(payment.amount))} />
+            <PaymentInfo label="匯款人" value={payment.payer_name || '尚未提供'} />
+            <PaymentInfo label="匯款時間" value={formatPaymentDateTime(payment.transferred_at)} />
+            <PaymentInfo label="狀態" value={paymentStatusText[payment.status]} />
+            <div className="flex justify-end">
+              {canConfirm ? (
+                <button
+                  type="button"
+                  disabled={isConfirming}
+                  onClick={() => onConfirm(payment)}
+                  className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60"
+                >
+                  {isConfirming ? '確認中…' : '確認入帳'}
+                </button>
+              ) : (
+                <span className="rounded-full bg-success-subtle px-3 py-1.5 text-xs font-medium text-success-subtle-ink">
+                  {payment.status === 'paid' ? '已確認入帳' : paymentStatusText[payment.status]}
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {paymentError && (
+        <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">{paymentError}</p>
+      )}
+    </div>
+  )
+}
+
+function PaymentInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-[0.14em] text-ink-3">{label}</div>
+      <div className="mt-1 text-sm font-medium text-ink">{value}</div>
+    </div>
+  )
+}
+
+function formatPaymentDateTime(value?: string): string {
+  if (!value) return '尚未提供'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+const paymentStatusText: Record<RawPayment['status'], string> = {
+  pending: '待確認',
+  paid: '已付款',
+  failed: '比對失敗',
+  cancelled: '已取消',
+  refunded: '已退款',
 }
 
 function FilterButton({ icon: Icon, label, onClick }: { icon: typeof Filter; label: string; onClick?: () => void }) {
