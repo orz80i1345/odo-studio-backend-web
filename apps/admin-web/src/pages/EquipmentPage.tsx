@@ -26,10 +26,10 @@ export function EquipmentPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error: listError } = useQuery({
     queryKey,
     queryFn: async () => {
-      const res = await api.get<{ data: RawEquipmentItem[] }>('/equipment_items', {
+      const res = await api.get<{ data: RawEquipmentItem[] }>('/public/equipment_items', {
         pageSize: 100,
         sort: 'display_order_asc',
       })
@@ -143,6 +143,11 @@ export function EquipmentPage() {
       </div>
 
       {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">{error}</p>}
+      {listError && (
+        <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">
+          {listError instanceof Error ? listError.message : '器材列表讀取失敗'}
+        </p>
+      )}
       {message && <p className="rounded-md bg-success-subtle px-3 py-2 text-sm text-success-subtle-ink">{message}</p>}
 
       {isCreateOpen && (

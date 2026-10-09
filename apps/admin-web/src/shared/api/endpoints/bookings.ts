@@ -41,7 +41,7 @@ export async function listMyBookings(
   const filters: string[] = []
   if (params?.status) filters.push(filter('status', 'eq', params.status))
   if (params?.customerEmail) filters.push(filter('customer_email', 'eq', params.customerEmail))
-  const res = await api.get<ScaffoldListResponse<RawBooking>>('/bookings', {
+  const res = await api.get<ScaffoldListResponse<RawBooking>>('/public/bookings', {
     page: params?.page,
     pageSize: params?.pageSize ?? 50,
     filter: filters,
@@ -52,7 +52,7 @@ export async function listMyBookings(
 
 /** 單一預約詳細 */
 export async function getBooking(api: ApiClient, bookingId: ID) {
-  const res = await api.get<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`)
+  const res = await api.get<ScaffoldItemResponse<RawBooking>>(`/public/bookings/${bookingId}`)
   return toBooking(unwrapItem(res))
 }
 

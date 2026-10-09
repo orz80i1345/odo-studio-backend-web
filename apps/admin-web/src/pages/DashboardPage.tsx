@@ -140,7 +140,7 @@ export function DashboardPage() {
           <section className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
             <h2 className="font-serif text-xl text-ink">需要處理</h2>
             <div className="mt-4 space-y-3">
-              <Task icon={AlertCircle} title={`${pendingPayments.length} 筆付款待確認`} body="核對匯款帳號後五碼與入帳時間。" tone="warning" />
+              <Task icon={AlertCircle} title={`${pendingPayments.length} 筆付款待確認`} body="核對匯款帳號末四碼、入帳金額與時間。" tone="warning" />
               <Task
                 icon={KeyRound}
                 title={`${pendingLockCount} 筆電子鎖待處理`}
