@@ -36,10 +36,11 @@ export async function createBooking(api: ApiClient, input: CreateBookingInput) {
 /** 我的預約列表（前台會員；後端由 token 判斷） */
 export async function listMyBookings(
   api: ApiClient,
-  params?: { page?: number; pageSize?: number; status?: string; customerEmail?: string },
+  params?: { page?: number; pageSize?: number; status?: string; paymentStatus?: BookingPaymentStatus; customerEmail?: string },
 ) {
   const filters: string[] = []
   if (params?.status) filters.push(filter('status', 'eq', params.status))
+  if (params?.paymentStatus) filters.push(filter('payment_status', 'eq', params.paymentStatus))
   if (params?.customerEmail) filters.push(filter('customer_email', 'eq', params.customerEmail))
   const res = await api.get<ScaffoldListResponse<RawBooking>>('/public/bookings', {
     page: params?.page,

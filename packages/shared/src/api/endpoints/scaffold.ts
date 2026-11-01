@@ -172,6 +172,7 @@ export interface RawBooking {
   cancellation_reason?: string
   source?: Booking['source']
   booking_mode?: Booking['bookingMode']
+  metadata?: unknown
   created_at?: string
   updated_at?: string
 }
@@ -384,6 +385,7 @@ export function toBooking(raw: RawBooking): Booking {
     cancellationReason: raw.cancellation_reason,
     source: raw.source ?? 'web',
     bookingMode: raw.booking_mode ?? 'scenes',
+    metadata: objectValue(raw.metadata),
     createdAt: raw.created_at ?? '',
     updatedAt: raw.updated_at ?? '',
   }

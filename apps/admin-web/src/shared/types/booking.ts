@@ -53,6 +53,7 @@ export interface Booking {
   cancellationReason?: string
   source: BookingSource
   bookingMode: BookingMode
+  metadata: Record<string, unknown>
   createdAt: DateString
   updatedAt: DateString
 }
