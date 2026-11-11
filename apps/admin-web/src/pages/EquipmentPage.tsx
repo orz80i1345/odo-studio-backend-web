@@ -14,11 +14,29 @@ interface RawEquipmentItem {
   is_active?: boolean
   display_order?: number
   metadata?: Record<string, unknown>
+  item_type: EquipmentItemType
 }
 
-const queryKey = ['admin', 'equipment-items'] as const
+export type EquipmentItemType = 'equipment' | 'prop'
 
-export function EquipmentPage() {
+const pageCopy = {
+  equipment: {
+    eyebrow: 'Equipment',
+    title: '器材管理',
+    itemLabel: '器材',
+    description: '管理前台可加租的器材。每項器材同一個預約時段只能被租借一次。',
+  },
+  prop: {
+    eyebrow: 'Props',
+    title: '道具管理',
+    itemLabel: '道具',
+    description: '管理前台可瀏覽與加租的拍攝道具。每項道具同一個預約時段只能被租借一次。',
+  },
+} as const
+
+export function EquipmentPage({ itemType = 'equipment' }: { itemType?: EquipmentItemType }) {
+  const copy = pageCopy[itemType]
+  const queryKey = ['admin', 'equipment-items', itemType] as const
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -31,6 +49,7 @@ export function EquipmentPage() {
     queryFn: async () => {
       const res = await api.get<{ data: RawEquipmentItem[] }>('/public/equipment_items', {
         pageSize: 100,
+        filter: `item_type,eq,${itemType}`,
         sort: 'display_order_asc',
       })
       return res.data ?? []
@@ -72,17 +91,17 @@ export function EquipmentPage() {
     try {
       setError(null)
       setMessage(null)
-      const input = formToPayload(form)
+      const input = formToPayload(form, itemType)
       const created = await createItem.mutateAsync(input)
       await writeActivityLog(api, {
-        action: 'create_equipment_item',
-        entityType: 'equipment_item',
+        action: `create_${itemType}_item`,
+        entityType: `${itemType}_item`,
         entityId: Number(created.data.id),
         changes: input,
       })
-      setMessage(`器材 ${created.data.name} 已建立。`)
+      setMessage(`${copy.itemLabel} ${created.data.name} 已建立。`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '新增器材失敗')
+      setError(e instanceof ApiError ? e.message : `新增${copy.itemLabel}失敗`)
     }
   }
 
@@ -92,35 +111,35 @@ export function EquipmentPage() {
     try {
       setError(null)
       setMessage(null)
-      const input = formToPayload(form)
+      const input = formToPayload(form, itemType)
       const updated = await updateItem.mutateAsync({ id, input })
       await writeActivityLog(api, {
-        action: 'update_equipment_item',
-        entityType: 'equipment_item',
+        action: `update_${itemType}_item`,
+        entityType: `${itemType}_item`,
         entityId: Number(updated.data.id),
         changes: input,
       })
-      setMessage(`器材 ${updated.data.name} 已更新。`)
+      setMessage(`${copy.itemLabel} ${updated.data.name} 已更新。`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '更新器材失敗')
+      setError(e instanceof ApiError ? e.message : `更新${copy.itemLabel}失敗`)
     }
   }
 
   async function onDelete(item: RawEquipmentItem) {
-    if (!window.confirm(`確定刪除器材 ${item.name}？若已有訂單使用此器材，資料庫可能會拒絕刪除。`)) return
+    if (!window.confirm(`確定刪除${copy.itemLabel} ${item.name}？若已有訂單使用此${copy.itemLabel}，資料庫可能會拒絕刪除。`)) return
     try {
       setError(null)
       setMessage(null)
       await deleteItem.mutateAsync(item.id)
       await writeActivityLog(api, {
-        action: 'delete_equipment_item',
-        entityType: 'equipment_item',
+        action: `delete_${itemType}_item`,
+        entityType: `${itemType}_item`,
         entityId: item.id,
         changes: { name: item.name },
       })
-      setMessage(`器材 ${item.name} 已刪除。`)
+      setMessage(`${copy.itemLabel} ${item.name} 已刪除。`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '刪除器材失敗')
+      setError(e instanceof ApiError ? e.message : `刪除${copy.itemLabel}失敗`)
     }
   }
 
@@ -128,9 +147,9 @@ export function EquipmentPage() {
     <section className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-ink-3">Equipment</p>
-          <h1 className="mt-2 font-serif text-3xl text-ink md:text-4xl">器材管理</h1>
-          <p className="mt-3 max-w-2xl text-ink-2">管理前台可加租的器材。每項器材同一個預約時段只能被租借一次。</p>
+          <p className="text-xs uppercase tracking-[0.22em] text-ink-3">{copy.eyebrow}</p>
+          <h1 className="mt-2 font-serif text-3xl text-ink md:text-4xl">{copy.title}</h1>
+          <p className="mt-3 max-w-2xl text-ink-2">{copy.description}</p>
         </div>
         <button
           type="button"
@@ -138,24 +157,24 @@ export function EquipmentPage() {
           className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover"
         >
           <PackagePlus className="size-4" />
-          新增器材
+          新增{copy.itemLabel}
         </button>
       </div>
 
       {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">{error}</p>}
       {listError && (
         <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">
-          {listError instanceof Error ? listError.message : '器材列表讀取失敗'}
+          {listError instanceof Error ? listError.message : `${copy.itemLabel}列表讀取失敗`}
         </p>
       )}
       {message && <p className="rounded-md bg-success-subtle px-3 py-2 text-sm text-success-subtle-ink">{message}</p>}
 
       {isCreateOpen && (
         <form onSubmit={onCreate} className="rounded-lg border border-line bg-surface p-5 shadow-quiet">
-          <EquipmentFields />
+          <EquipmentFields itemType={itemType} />
           <div className="mt-4 flex justify-end">
             <button type="submit" className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover">
-              建立器材
+              建立{copy.itemLabel}
             </button>
           </div>
         </form>
@@ -169,7 +188,7 @@ export function EquipmentPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-3"
-              placeholder="搜尋器材名稱或描述"
+              placeholder={`搜尋${copy.itemLabel}名稱或描述`}
             />
           </label>
         </div>
@@ -177,13 +196,13 @@ export function EquipmentPage() {
         <div className="grid divide-y divide-line">
           {isLoading && <div className="p-10 text-center text-ink-3"><Spinner /></div>}
           {!isLoading && filteredItems.length === 0 && (
-            <div className="p-10 text-center text-sm text-ink-3">目前沒有器材。</div>
+            <div className="p-10 text-center text-sm text-ink-3">目前沒有{copy.itemLabel}。</div>
           )}
           {filteredItems.map((item) => (
             <article key={item.id} className="p-5">
               {editingId === item.id ? (
                 <form onSubmit={(event) => onUpdate(event, item.id)} className="space-y-4">
-                  <EquipmentFields item={item} />
+                  <EquipmentFields item={item} itemType={itemType} />
                   <div className="flex justify-end gap-2">
                     <button type="button" onClick={() => setEditingId(null)} className="h-9 rounded-lg border border-line px-3 text-sm text-ink-2 hover:bg-sunken hover:text-ink">
                       取消
@@ -235,10 +254,11 @@ export function EquipmentPage() {
   )
 }
 
-function EquipmentFields({ item }: { item?: RawEquipmentItem }) {
+function EquipmentFields({ item, itemType }: { item?: RawEquipmentItem; itemType: EquipmentItemType }) {
+  const itemLabel = pageCopy[itemType].itemLabel
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-      <Field name="name" label="器材名稱" defaultValue={item?.name ?? ''} required />
+      <Field name="name" label={`${itemLabel}名稱`} defaultValue={item?.name ?? ''} required />
       <Field name="unitPrice" label="價格" type="number" min="0" defaultValue={String(item?.unit_price ?? 0)} required />
       <Field name="displayOrder" label="排序" type="number" defaultValue={String(item?.display_order ?? 0)} />
       <Field name="imageUrl" label="圖片 URL" defaultValue={item?.image_url ?? ''} className="xl:col-span-2" />
@@ -282,7 +302,7 @@ function Field({ name, label, defaultValue = '', type = 'text', required, min, c
   )
 }
 
-function formToPayload(form: FormData): Omit<RawEquipmentItem, 'id'> {
+function formToPayload(form: FormData, itemType: EquipmentItemType): Omit<RawEquipmentItem, 'id'> {
   return {
     name: String(form.get('name') ?? '').trim(),
     description: String(form.get('description') ?? '').trim() || undefined,
@@ -291,5 +311,6 @@ function formToPayload(form: FormData): Omit<RawEquipmentItem, 'id'> {
     is_active: form.get('isActive') === 'on',
     display_order: Math.round(Number(form.get('displayOrder') ?? 0)),
     metadata: JSON.stringify({}) as unknown as Record<string, unknown>,
+    item_type: itemType,
   }
 }

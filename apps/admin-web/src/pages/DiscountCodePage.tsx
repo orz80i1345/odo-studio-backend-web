@@ -68,8 +68,8 @@ export function DiscountCodePage() {
     const summaries = new Map<string, CommissionSummary>()
     for (const code of codes) {
       const partnerName = metadataString(code.metadata, 'commission_partner_name')
-      const baseRate = metadataNumber(code.metadata, 'commission_base_rate')
-      if (code.discount_type !== 'percent' || !partnerName || baseRate == null) continue
+      const baseValue = commissionBaseValue(code)
+      if (!partnerName || baseValue == null) continue
 
       const matchingBookings = commissionBookings.filter((booking) =>
         booking.discountCode?.toUpperCase() === code.code.toUpperCase() &&
@@ -78,7 +78,7 @@ export function DiscountCodePage() {
       )
       const entries = matchingBookings.map((booking) => ({
         booking,
-        amount: commissionAmountForBooking(booking, code, baseRate),
+        amount: commissionAmountForBooking(booking, code, baseValue),
         settledAt: metadataString(booking.metadata, 'commission_settled_at'),
       }))
       const unsettledAmount = entries
@@ -214,7 +214,7 @@ export function DiscountCodePage() {
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-ink-3">Discount Codes</p>
           <h1 className="mt-2 font-serif text-3xl text-ink md:text-4xl">折扣碼管理</h1>
-          <p className="mt-3 max-w-2xl text-ink-2">管理折扣碼與合作夥伴回佣。百分比類型請以 7、8、9 表示七、八、九折。</p>
+          <p className="mt-3 max-w-2xl text-ink-2">管理折扣碼與合作夥伴回佣；支援折數、總額折抵與每小時折抵。</p>
         </div>
         <button
           type="button"
@@ -331,21 +331,44 @@ export function DiscountCodePage() {
 }
 
 function DiscountCodeFields({ item }: { item?: RawDiscountCode }) {
+  const [discountType, setDiscountType] = useState<RawDiscountCode['discount_type']>(
+    item?.discount_type ?? 'hourly_fixed',
+  )
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
       <Field name="code" label="折扣碼" defaultValue={item?.code ?? ''} required />
       <Field name="name" label="名稱" defaultValue={item?.name ?? ''} />
       <label>
         <span className="mb-2 block text-sm text-ink-2">類型</span>
-        <select name="discountType" defaultValue={item?.discount_type ?? 'hourly_fixed'} className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
+        <select
+          name="discountType"
+          value={discountType}
+          onChange={(event) => setDiscountType(event.target.value as RawDiscountCode['discount_type'])}
+          className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none"
+        >
           <option value="hourly_fixed">每小時固定折抵</option>
           <option value="fixed_amount">總金額固定折抵</option>
           <option value="percent">折數（7 / 8 / 9 折）</option>
         </select>
       </label>
-      <Field name="discountAmount" label="折扣值（折數填 7 / 8 / 9）" type="number" min="0" defaultValue={String(item?.discount_amount ?? 300)} required />
+      <Field
+        name="discountAmount"
+        label={customerDiscountFieldLabel(discountType)}
+        type="number"
+        min="0"
+        step="0.01"
+        defaultValue={String(item?.discount_amount ?? 300)}
+        required
+      />
       <Field name="partnerName" label="合作夥伴" defaultValue={metadataString(item?.metadata, 'commission_partner_name') ?? ''} />
-      <Field name="commissionBaseRate" label="夥伴底價折數" type="number" min="0" defaultValue={String(metadataNumber(item?.metadata, 'commission_base_rate') ?? '')} />
+      <Field
+        name="commissionBaseValue"
+        label={commissionBaseFieldLabel(discountType)}
+        type="number"
+        min="0"
+        step="0.01"
+        defaultValue={String(item ? commissionBaseValue(item) ?? '' : '')}
+      />
       <label className="flex items-end gap-2 pb-2 text-sm text-ink-2">
         <input name="isActive" type="checkbox" defaultChecked={item?.is_active ?? true} className="size-4 accent-brand" />
         啟用
@@ -354,13 +377,14 @@ function DiscountCodeFields({ item }: { item?: RawDiscountCode }) {
   )
 }
 
-function Field({ name, label, defaultValue = '', type = 'text', required, min }: {
+function Field({ name, label, defaultValue = '', type = 'text', required, min, step }: {
   name: string
   label: string
   defaultValue?: string
   type?: string
   required?: boolean
   min?: string
+  step?: string
 }) {
   return (
     <label>
@@ -369,6 +393,7 @@ function Field({ name, label, defaultValue = '', type = 'text', required, min }:
         name={name}
         type={type}
         min={min}
+        step={step}
         required={required}
         defaultValue={defaultValue}
         className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
@@ -381,17 +406,23 @@ function formToPayload(form: FormData, existingMetadata: Record<string, unknown>
   const discountType = String(form.get('discountType') ?? 'hourly_fixed') as RawDiscountCode['discount_type']
   const discountAmount = Math.max(0, Number(form.get('discountAmount') ?? 0))
   const partnerName = String(form.get('partnerName') ?? '').trim()
-  const baseRateValue = String(form.get('commissionBaseRate') ?? '').trim()
-  const commissionBaseRate = baseRateValue === '' ? undefined : Number(baseRateValue)
+  const baseValueText = String(form.get('commissionBaseValue') ?? '').trim()
+  const commissionBaseValue = baseValueText === '' ? undefined : Number(baseValueText)
+  if (!Number.isFinite(discountAmount)) throw new Error('請輸入正確的折扣值。')
   if (discountType === 'percent' && (discountAmount < 1 || discountAmount > 10)) {
     throw new Error('折數請輸入 1 至 10，例如 8 代表八折。')
   }
-  if (partnerName && discountType !== 'percent') throw new Error('回佣機制目前僅適用於百分比折扣。')
-  if (partnerName && (commissionBaseRate == null || !Number.isFinite(commissionBaseRate))) {
-    throw new Error('請輸入合作夥伴的底價折數。')
+  if (partnerName && (commissionBaseValue == null || !Number.isFinite(commissionBaseValue))) {
+    throw new Error(`請輸入${commissionBaseFieldLabel(discountType)}。`)
   }
-  if (commissionBaseRate != null && (commissionBaseRate < 0 || commissionBaseRate > discountAmount)) {
+  if (commissionBaseValue != null && commissionBaseValue < 0) {
+    throw new Error('夥伴底價優惠不能小於 0。')
+  }
+  if (discountType === 'percent' && commissionBaseValue != null && commissionBaseValue > discountAmount) {
     throw new Error('夥伴底價折數不能高於客戶折數。')
+  }
+  if (discountType !== 'percent' && commissionBaseValue != null && commissionBaseValue < discountAmount) {
+    throw new Error('夥伴底價折抵不能低於提供給客戶的折抵。')
   }
   return {
     code: String(form.get('code') ?? '').trim().toUpperCase(),
@@ -402,7 +433,8 @@ function formToPayload(form: FormData, existingMetadata: Record<string, unknown>
     metadata: {
       ...existingMetadata,
       commission_partner_name: partnerName || undefined,
-      commission_base_rate: partnerName ? commissionBaseRate : undefined,
+      commission_base_value: partnerName ? commissionBaseValue : undefined,
+      commission_base_rate: partnerName && discountType === 'percent' ? commissionBaseValue : undefined,
     },
   }
 }
@@ -415,11 +447,11 @@ function labelForDiscount(item: RawDiscountCode) {
 
 function commissionDetails(item: RawDiscountCode, summary?: CommissionSummary, loading?: boolean) {
   const partnerName = metadataString(item.metadata, 'commission_partner_name')
-  const baseRate = metadataNumber(item.metadata, 'commission_base_rate')
-  if (item.discount_type !== 'percent' || !partnerName || baseRate == null) return null
+  const baseValue = commissionBaseValue(item)
+  if (!partnerName || baseValue == null) return null
   return (
     <div className="rounded-lg bg-brand-subtle px-4 py-3 text-sm text-brand-subtle-ink">
-      <div className="text-xs opacity-75">{partnerName} · 底價 {baseRate} 折</div>
+      <div className="text-xs opacity-75">{partnerName} · {commissionBaseSummary(item.discount_type, baseValue)}</div>
       <div className="mt-1 font-medium">
         {loading ? '計算中…' : `待結算 ${formatCurrency(summary?.unsettledAmount ?? 0)}`}
       </div>
@@ -479,10 +511,41 @@ function CommissionEntries({ summary, isUpdating, onSettle }: {
   )
 }
 
-function commissionAmountForBooking(booking: Booking, code: RawDiscountCode, baseRate: number) {
+function commissionAmountForBooking(booking: Booking, code: RawDiscountCode, baseValue: number) {
   const snapshotAmount = metadataNumber(booking.metadata, 'commission_amount')
   if (snapshotAmount != null) return Math.max(0, snapshotAmount)
-  return Math.max(0, Math.round(booking.subtotal * (Number(code.discount_amount) - baseRate) / 10))
+  const subtotal = Math.max(0, Number(booking.subtotal))
+  const customerDiscount = Math.min(subtotal, Math.max(0, Number(booking.discountAmount)))
+  const rawBaseDiscount = code.discount_type === 'hourly_fixed'
+    ? baseValue * Math.max(0, Number(booking.totalHours))
+    : code.discount_type === 'fixed_amount'
+      ? baseValue
+      : subtotal * (1 - Math.min(10, Math.max(0, baseValue)) / 10)
+  const baseDiscount = Math.min(subtotal, Math.max(0, Math.round(rawBaseDiscount)))
+  return Math.max(0, baseDiscount - customerDiscount)
+}
+
+function commissionBaseValue(item: RawDiscountCode) {
+  return metadataNumber(item.metadata, 'commission_base_value') ??
+    metadataNumber(item.metadata, 'commission_base_rate')
+}
+
+function commissionBaseFieldLabel(discountType: RawDiscountCode['discount_type']) {
+  if (discountType === 'hourly_fixed') return '夥伴底價每小時折抵'
+  if (discountType === 'fixed_amount') return '夥伴底價總折抵'
+  return '夥伴底價折數'
+}
+
+function customerDiscountFieldLabel(discountType: RawDiscountCode['discount_type']) {
+  if (discountType === 'hourly_fixed') return '顧客每小時折抵'
+  if (discountType === 'fixed_amount') return '顧客總額折抵'
+  return '顧客折數（7 / 8 / 9）'
+}
+
+function commissionBaseSummary(discountType: RawDiscountCode['discount_type'], baseValue: number) {
+  if (discountType === 'hourly_fixed') return `底價每小時折 NT$ ${baseValue.toLocaleString()}`
+  if (discountType === 'fixed_amount') return `底價總額折 NT$ ${baseValue.toLocaleString()}`
+  return `底價 ${baseValue.toLocaleString()} 折`
 }
 
 function formatDateTime(value: string) {

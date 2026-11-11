@@ -35,6 +35,7 @@ export class ApiError extends Error {
 export interface ApiClient {
   get: <T>(path: string, query?: ApiQuery) => Promise<T>
   post: <T>(path: string, body?: unknown) => Promise<T>
+  put: <T>(path: string, body?: unknown) => Promise<T>
   patch: <T>(path: string, body?: unknown) => Promise<T>
   delete: <T>(path: string) => Promise<T>
 }
@@ -89,6 +90,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   return {
     get: (path, query) => request('GET', path, undefined, query),
     post: (path, body) => request('POST', path, body),
+    put: (path, body) => request('PUT', path, body),
     patch: (path, body) => request('PATCH', path, body),
     delete: (path) => request('DELETE', path),
   }

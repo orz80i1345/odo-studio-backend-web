@@ -3,14 +3,18 @@ import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   CalendarDays,
+  ChevronDown,
   ClipboardList,
   LayoutDashboard,
+  LogOut,
   Moon,
   Package,
   Settings,
+  Shapes,
   Sun,
   Tags,
   Users,
+  UserRound,
   Warehouse,
 } from 'lucide-react'
 import { cn } from '@studio/shared'
@@ -23,6 +27,7 @@ const navItems = [
   { to: '/schedule', label: '檔期日曆', icon: CalendarDays },
   { to: '/studios', label: '攝影棚管理', icon: Warehouse },
   { to: '/equipment', label: '器材管理', icon: Package },
+  { to: '/props', label: '道具管理', icon: Shapes },
   { to: '/customers', label: '顧客', icon: Users },
   { to: '/discount-codes', label: '折扣碼', icon: Tags },
   { to: '/settings', label: '設定', icon: Settings },
@@ -37,6 +42,7 @@ export function AdminLayout() {
   const navigate = useNavigate()
   const token = localStorage.getItem(TOKEN_KEY)
   const { data: me } = useAdminMe()
+  const [accountOpen, setAccountOpen] = useState(false)
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_KEY)
     return stored === 'dark' || stored === 'light' ? stored : 'light'
@@ -47,6 +53,26 @@ export function AdminLayout() {
     document.documentElement.classList.toggle('light', theme === 'light')
     localStorage.setItem(THEME_KEY, theme)
   }, [theme])
+
+  useEffect(() => {
+    setAccountOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!accountOpen) return
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAccountOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [accountOpen])
+
+  function signOut() {
+    localStorage.removeItem(TOKEN_KEY)
+    qc.clear()
+    setAccountOpen(false)
+    navigate('/login', { replace: true })
+  }
 
   if (!token) {
     const next = encodeURIComponent(location.pathname + location.search)
@@ -92,7 +118,7 @@ export function AdminLayout() {
       </aside>
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-10 border-b border-line bg-surface/90 backdrop-blur">
-          <div className="flex h-16 items-center justify-end gap-3 px-5 md:px-8">
+          <div className="relative flex h-16 items-center justify-end gap-3 px-5 md:px-8">
             <button
               type="button"
               onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}
@@ -104,20 +130,40 @@ export function AdminLayout() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                localStorage.removeItem(TOKEN_KEY)
-                qc.clear()
-                navigate('/login', { replace: true })
-              }}
-              title="Sign out"
+              onClick={() => setAccountOpen((value) => !value)}
+              aria-expanded={accountOpen}
+              aria-haspopup="menu"
+              title="帳戶選單"
               className="flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-left hover:bg-sunken"
             >
-              <div className="size-7 rounded-full bg-brand-subtle" />
+              <div className="flex size-7 items-center justify-center rounded-full bg-brand-subtle text-brand-subtle-ink">
+                <UserRound className="size-4" />
+              </div>
               <div className="hidden text-sm sm:block">
                 <div className="font-medium text-ink">{me?.email ?? '已登入'}</div>
-                <div className="text-xs text-ink-3">Sign out</div>
+                <div className="text-xs text-ink-3">{me?.role ?? 'admin'}</div>
               </div>
+              <ChevronDown className={`size-4 text-ink-3 transition-transform ${accountOpen ? 'rotate-180' : ''}`} />
             </button>
+
+            {accountOpen && (
+              <div role="menu" className="absolute right-5 top-[calc(100%-0.25rem)] z-30 w-[min(20rem,calc(100vw-2.5rem))] rounded-xl border border-line bg-raised p-2 shadow-raised md:right-8">
+                <div className="border-b border-line px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-ink-3">帳戶資料</p>
+                  <p className="mt-2 break-all text-sm font-medium text-ink">{me?.email ?? '已登入'}</p>
+                  <p className="mt-1 text-xs text-ink-3">角色：{me?.role ?? 'admin'}</p>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={signOut}
+                  className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm text-danger hover:bg-danger-subtle"
+                >
+                  <LogOut className="size-4" />
+                  登出
+                </button>
+              </div>
+            )}
           </div>
         </header>
         <main className="px-5 py-6 md:px-8 md:py-8">

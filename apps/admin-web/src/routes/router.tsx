@@ -8,6 +8,7 @@
  *   /schedule     檔期日曆
  *   /studios      攝影棚管理
  *   /equipment    器材管理
+ *   /props        道具管理
  *   /customers    顧客列表
  *   /discount-codes 折扣碼管理
  *   /settings     系統設定
@@ -38,7 +39,8 @@ export const router = createBrowserRouter([
       { path: 'bookings', element: <BookingListPage /> },
       { path: 'schedule', element: <SchedulePage /> },
       { path: 'studios', element: <StudioManagePage /> },
-      { path: 'equipment', element: <EquipmentPage /> },
+      { path: 'equipment', element: <EquipmentPage itemType="equipment" /> },
+      { path: 'props', element: <EquipmentPage itemType="prop" /> },
       { path: 'customers', element: <CustomerListPage /> },
       { path: 'discount-codes', element: <DiscountCodePage /> },
       { path: 'settings', element: <SettingsPage /> },

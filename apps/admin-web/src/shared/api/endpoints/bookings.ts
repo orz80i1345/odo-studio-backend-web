@@ -59,7 +59,7 @@ export async function getBooking(api: ApiClient, bookingId: ID) {
 
 /** 取消預約（前台會員） */
 export async function cancelBooking(api: ApiClient, bookingId: ID, reason?: string) {
-  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
+  const res = await api.put<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
     status: 'cancelled',
     cancellation_reason: reason,
     cancelled_at: new Date().toISOString(),
@@ -81,7 +81,7 @@ export async function updateBooking(
     cancellationReason: string
   }>,
 ) {
-  const res = await api.patch<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
+  const res = await api.put<ScaffoldItemResponse<RawBooking>>(`/bookings/${bookingId}`, {
     status: input.status,
     payment_status: input.paymentStatus,
     customer_note: input.customerNote,
@@ -180,7 +180,7 @@ async function syncBookingTimeSlots(api: ApiClient, booking: Booking) {
     ? exactBookingSlots
     : overlappingSlots
   await Promise.all(targetSlots
-    .map((slot) => api.patch(`/time_slots/${slot.id}`, {
+    .map((slot) => api.put(`/time_slots/${slot.id}`, {
       status: nextStatus,
       booking_id: nextStatus === 'booked' ? booking.id : null,
       metadata: '{}',
@@ -269,7 +269,7 @@ async function syncDailyAvailability(api: ApiClient, studioId: ID, date: string)
     ],
   })
   const item = toScaffoldList(existing, (value) => value).items[0]
-  if (item) await api.patch(`/studio_daily_availability/${item.id}`, payload)
+  if (item) await api.put(`/studio_daily_availability/${item.id}`, payload)
   else await api.post('/studio_daily_availability', payload)
 }
 

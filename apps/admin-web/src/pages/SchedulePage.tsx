@@ -175,7 +175,9 @@ export function SchedulePage() {
       hourlyPrice?: number
     }) => {
       const dates = [...new Set(input.dates)].sort()
-      if (dates.length === 0) return { created: 0, skippedClosed: 0, days: 0, createdSlots: [] }
+      if (dates.length === 0) {
+        return { created: 0, skippedClosed: 0, days: 0, createdSlots: [], slotsForSync: [], dates: [] }
+      }
       const existingSlots = await fetchRangeTimeSlots(input.studioId, dates[0], dates[dates.length - 1])
       const existingKeys = new Set(existingSlots.map((slot) => `${normalizeApiDate(slot.slot_date)}-${slot.start_minute}-${slot.end_minute}`))
       const blockingDates = new Set(
@@ -212,11 +214,25 @@ export function SchedulePage() {
           ? body
           : payload.map((slot, index) => ({ id: -Date.now() - index, ...slot }))
       }
-      return { created: payload.length, skippedClosed, days: dates.length, createdSlots: createdSlots ?? [] }
+      const slotsForSync = [...new Map(
+        [...existingSlots, ...createdSlots].map((slot) => [
+          `${normalizeApiDate(slot.slot_date)}-${slot.start_minute}-${slot.end_minute}`,
+          slot,
+        ]),
+      ).values()]
+      return {
+        created: payload.length,
+        skippedClosed,
+        days: dates.length,
+        createdSlots: createdSlots ?? [],
+        slotsForSync,
+        dates,
+      }
     },
-    onSuccess: async ({ created, skippedClosed, days, createdSlots }) => {
+    onSuccess: async ({ created, skippedClosed, days, createdSlots, slotsForSync, dates }) => {
       const skippedText = skippedClosed > 0 ? `，略過 ${skippedClosed} 個特殊日期` : ''
-      setMessage(created > 0 ? `已為 ${days} 天產生 ${created} 個預約時段${skippedText}` : `沒有新增時段${skippedText}`)
+      const syncedText = dates.length > 0 ? `，已同步 ${dates.length} 天每日狀態` : ''
+      setMessage(created > 0 ? `已為 ${days} 天產生 ${created} 個預約時段${skippedText}${syncedText}` : `沒有新增時段${skippedText}${syncedText}`)
       qc.setQueryData<RawTimeSlot[]>(['admin', 'time-slots', activeStudioId, selectedDate], (current = []) => {
         const selectedDateSlots = createdSlots.filter((slot) => normalizeApiDate(slot.slot_date) === selectedDate)
         if (selectedDateSlots.length === 0) return current
@@ -231,8 +247,14 @@ export function SchedulePage() {
         changes: { date: selectedDate, days, created, skippedClosed },
       })
       qc.invalidateQueries({ queryKey: ['admin', 'time-slots'] })
-      const dates = [...new Set(createdSlots.map((slot) => normalizeApiDate(slot.slot_date)))]
-      await Promise.all(dates.map((date) => syncDailyAvailability(Number(activeStudioId), date)))
+      const slotsByDate = new Map<string, RawTimeSlot[]>()
+      for (const slot of slotsForSync) {
+        const date = normalizeApiDate(slot.slot_date)
+        slotsByDate.set(date, [...(slotsByDate.get(date) ?? []), slot])
+      }
+      await Promise.all(dates.map((date) =>
+        syncDailyAvailability(Number(activeStudioId), date, slotsByDate.get(date) ?? []),
+      ))
     },
     onError: (error) => setMessage(error instanceof Error ? error.message : '產生預約時段失敗'),
   })
@@ -740,8 +762,8 @@ async function blockAvailableSlotsForSpecialDate(input: CreateSpecialDateInput) 
   return patched
 }
 
-async function syncDailyAvailability(studioId: number, date: string) {
-  const slots = await fetchDayTimeSlots(studioId, date)
+async function syncDailyAvailability(studioId: number, date: string, knownSlots?: RawTimeSlot[]) {
+  const slots = knownSlots ?? await fetchDayTimeSlots(studioId, date)
   const summary = buildDailyAvailabilityPayload(studioId, date, slots)
   const existing = await api.get<{ data: RawStudioDailyAvailability[] }>('/public/studio_daily_availability', {
     pageSize: 1,

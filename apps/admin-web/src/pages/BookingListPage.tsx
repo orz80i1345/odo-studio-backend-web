@@ -96,7 +96,7 @@ export function BookingListPage() {
   const confirmPayment = useMutation({
     mutationFn: async ({ booking, payment }: { booking: Booking; payment: RawPayment }) => {
       const verifiedAt = new Date().toISOString()
-      await api.patch(`/payments/${payment.id}`, {
+      await api.put(`/payments/${payment.id}`, {
         status: 'paid',
         verified_at: verifiedAt,
       })
@@ -310,7 +310,7 @@ export function BookingListPage() {
 
       <section className="rounded-lg border border-line bg-surface shadow-quiet">
         <div className="grid gap-3 border-b border-line p-4 xl:grid-cols-[auto_1fr_auto_auto_auto]">
-          <div className="flex h-10 items-center rounded-lg border border-line bg-surface">
+          <div className="flex h-10 min-w-0 items-center rounded-lg border border-line bg-surface">
             <button
               type="button"
               onClick={() => setSelectedMonth(shiftMonth(selectedMonth, -1))}
@@ -323,7 +323,7 @@ export function BookingListPage() {
               type="month"
               value={selectedMonth}
               onChange={(event) => setSelectedMonth(event.target.value)}
-              className="h-full border-x border-line bg-transparent px-3 text-sm text-ink outline-none"
+              className="h-full min-w-0 flex-1 border-x border-line bg-transparent px-3 text-sm text-ink outline-none"
             />
             <button
               type="button"
@@ -349,7 +349,84 @@ export function BookingListPage() {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-line md:hidden">
+          {isLoading && <div className="px-4 py-10 text-center text-ink-3"><Spinner /></div>}
+          {!isLoading && filteredBookings.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-ink-3">目前沒有預約資料。</div>
+          )}
+          {filteredBookings.map((booking) => (
+            <article key={`mobile-${booking.id}`} className="p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="break-words font-medium text-ink">{booking.bookingNumber}</p>
+                  <p className="mt-1 text-xs text-ink-3">{sourceLabels[booking.source]}</p>
+                </div>
+                <p className="shrink-0 font-medium text-ink">{formatCurrency(booking.totalPrice)}</p>
+              </div>
+
+              <div className="mt-4 rounded-lg bg-sunken p-3">
+                <p className="font-medium text-ink">{booking.customerName}</p>
+                <p className="mt-1 break-all text-xs leading-5 text-ink-3">{booking.customerPhone} · {booking.customerEmail}</p>
+                <p className="mt-3 text-sm font-medium text-ink">{formatBookingDateTime(booking.startAt, booking.endAt)}</p>
+                <p className="mt-1 text-xs leading-5 text-ink-3">
+                  {studioMap.get(booking.studioId) ?? `Studio #${booking.studioId}`} · {sceneNames(booking.sceneIds, sceneMap)}
+                </p>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <StatusBadge label={bookingStatusLabels[booking.status]} tone={bookingStatusTone[booking.status]} />
+                <StatusBadge label={paymentStatusLabels[booking.paymentStatus]} tone={paymentStatusTone[booking.paymentStatus]} />
+              </div>
+
+              {booking.customerNote && <p className="mt-4 text-sm leading-6 text-ink-2">備註：{booking.customerNote}</p>}
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpandedBookingId((value) => value === booking.id ? null : Number(booking.id))
+                    setPaymentError(null)
+                  }}
+                  className="h-11 rounded-lg border border-line bg-surface px-3 text-sm text-ink-2 hover:bg-sunken hover:text-ink"
+                >
+                  {expandedBookingId === booking.id ? '收合匯款資訊' : '查看匯款資訊'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingBookingId((value) => value === booking.id ? null : Number(booking.id))}
+                  className="h-11 rounded-lg bg-brand px-3 text-sm font-medium text-brand-on hover:bg-brand-hover"
+                >
+                  {editingBookingId === booking.id ? '收合編輯' : '修改訂單狀態'}
+                </button>
+              </div>
+
+              {expandedBookingId === booking.id && (
+                <div className="mt-4 rounded-lg bg-sunken p-3">
+                  <PaymentConfirmationPanel
+                    payments={payments.filter((payment) => payment.booking_id === Number(booking.id))}
+                    paymentError={paymentError}
+                    confirmingPaymentId={confirmPayment.isPending ? confirmPayment.variables?.payment.id : undefined}
+                    onConfirm={(payment) => onConfirmPayment(booking, payment)}
+                  />
+                </div>
+              )}
+
+              {editingBookingId === booking.id && (
+                <div className="mt-4 rounded-lg bg-sunken p-3">
+                  <BookingEditForm
+                    booking={booking}
+                    error={editError}
+                    isPending={updateBooking.isPending}
+                    onCancel={() => setEditingBookingId(null)}
+                    onSubmit={(event) => onUpdateBooking(event, booking)}
+                  />
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[920px] text-left text-sm">
             <thead className="border-b border-line bg-sunken text-xs uppercase tracking-[0.12em] text-ink-3">
               <tr>
@@ -446,29 +523,13 @@ export function BookingListPage() {
                 {editingBookingId === booking.id && (
                   <tr key={`${booking.id}-edit`}>
                     <td colSpan={8} className="bg-sunken px-4 py-4">
-                      <form onSubmit={(event) => onUpdateBooking(event, booking)} className="grid gap-4 rounded-lg border border-line bg-surface p-4 md:grid-cols-2 xl:grid-cols-4">
-                        <label>
-                          <span className="mb-2 block text-sm text-ink-2">預約狀態</span>
-                          <select name="status" defaultValue={booking.status} className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
-                            {Object.entries(bookingStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
-                        </label>
-                        <label>
-                          <span className="mb-2 block text-sm text-ink-2">付款狀態</span>
-                          <select name="paymentStatus" defaultValue={booking.paymentStatus} className="h-10 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
-                            {Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
-                        </label>
-                        <Field name="cancellationReason" label="取消原因" defaultValue={booking.cancellationReason ?? ''} />
-                        <Field name="customerNote" label="備註" defaultValue={booking.customerNote ?? ''} />
-                        {editError && <p className="md:col-span-2 xl:col-span-4 rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink">{editError}</p>}
-                        <div className="flex justify-end gap-3 md:col-span-2 xl:col-span-4">
-                          <button type="button" onClick={() => setEditingBookingId(null)} className="h-10 rounded-lg border border-line px-4 text-sm text-ink-2 hover:bg-sunken">取消</button>
-                          <button type="submit" disabled={updateBooking.isPending} className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60">
-                            {updateBooking.isPending ? '儲存中...' : '儲存'}
-                          </button>
-                        </div>
-                      </form>
+                      <BookingEditForm
+                        booking={booking}
+                        error={editError}
+                        isPending={updateBooking.isPending}
+                        onCancel={() => setEditingBookingId(null)}
+                        onSubmit={(event) => onUpdateBooking(event, booking)}
+                      />
                     </td>
                   </tr>
                 )}
@@ -479,6 +540,46 @@ export function BookingListPage() {
         </div>
       </section>
     </section>
+  )
+}
+
+function BookingEditForm({
+  booking,
+  error,
+  isPending,
+  onCancel,
+  onSubmit,
+}: {
+  booking: Booking
+  error: string | null
+  isPending: boolean
+  onCancel: () => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <form onSubmit={onSubmit} className="grid gap-4 rounded-lg border border-line bg-surface p-4 md:grid-cols-2 xl:grid-cols-4">
+      <label>
+        <span className="mb-2 block text-sm text-ink-2">預約狀態</span>
+        <select name="status" defaultValue={booking.status} className="h-11 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
+          {Object.entries(bookingStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label>
+        <span className="mb-2 block text-sm text-ink-2">付款狀態</span>
+        <select name="paymentStatus" defaultValue={booking.paymentStatus} className="h-11 w-full rounded-lg border border-line bg-sunken px-3 text-sm text-ink outline-none">
+          {Object.entries(paymentStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <Field name="cancellationReason" label="取消原因" defaultValue={booking.cancellationReason ?? ''} />
+      <Field name="customerNote" label="備註" defaultValue={booking.customerNote ?? ''} />
+      {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger-subtle-ink md:col-span-2 xl:col-span-4">{error}</p>}
+      <div className="grid grid-cols-2 gap-3 md:col-span-2 md:flex md:justify-end xl:col-span-4">
+        <button type="button" onClick={onCancel} className="h-11 rounded-lg border border-line px-4 text-sm text-ink-2 hover:bg-sunken">取消</button>
+        <button type="submit" disabled={isPending} className="h-11 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60">
+          {isPending ? '儲存中...' : '儲存'}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -503,7 +604,7 @@ function PaymentConfirmationPanel({
 
   return (
     <div className="payment-expand space-y-3">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center sm:gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-ink-3">Payment confirmation</p>
           <h3 className="mt-1 font-serif text-xl text-ink">匯款資訊確認</h3>
@@ -527,7 +628,7 @@ function PaymentConfirmationPanel({
                   type="button"
                   disabled={isConfirming}
                   onClick={() => onConfirm(payment)}
-                  className="h-10 rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60"
+                  className="h-11 w-full rounded-lg bg-brand px-4 text-sm font-medium text-brand-on hover:bg-brand-hover disabled:opacity-60 sm:w-auto"
                 >
                   {isConfirming ? '確認中…' : '確認入帳'}
                 </button>
